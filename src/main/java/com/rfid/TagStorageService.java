@@ -2,6 +2,8 @@ package com.rfid;
 
 import javax.swing.text.html.HTML;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 public class TagStorageService implements TagStorage {
@@ -70,6 +72,47 @@ public class TagStorageService implements TagStorage {
     }
 
     @Override
+    public List<TagDetail> findAll() {
+        String sql = "SELECT tag_id, antenna, first_seen, last_seen FROM tag_details";
+        List<TagDetail> tagDetails = new ArrayList<>();
+
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                TagDetail tagDetail = new TagDetail();
+                tagDetail.setTagId(rs.getString("tag_id"));
+                tagDetail.setAntenna(rs.getInt("antenna"));
+
+                Timestamp firstSeenTs = rs.getTimestamp("first_seen");
+                if (firstSeenTs != null) {
+                    tagDetail.setFirstSeen(firstSeenTs.toInstant());
+                }
+                Timestamp lastSeenTs = rs.getTimestamp("last_seen");
+                if (lastSeenTs != null) {
+                    tagDetail.setLastSeen(lastSeenTs.toInstant());
+                }
+                tagDetails.add(tagDetail);
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return tagDetails;
+    }
+
+    @Override
+    public void deleteAll() {
+        String sql = "DELETE FROM tag_details";
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
     public void save(TagDetail tag) {
         String sql = """
                 INSERT INTO tag_details (tag_id, antenna, first_seen, last_seen)
@@ -84,17 +127,6 @@ public class TagStorageService implements TagStorage {
             ps.setTimestamp(3, Timestamp.from(tag.getFirstSeen()));
             ps.setTimestamp(4, Timestamp.from(tag.getLastSeen()));
             ps.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    // ✅ Clear table after sync
-    public void clearAll() {
-        String sql = "DELETE FROM tag_details";
-        try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate(sql);
         } catch (SQLException e) {
             e.printStackTrace();
         }

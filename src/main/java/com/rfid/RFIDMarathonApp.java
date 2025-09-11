@@ -6,32 +6,41 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class RFIDMarathonApp extends JFrame {
-
-    private MarathonPanel marathonPanel = new MarathonPanel();
-    private RfidPanel rfidPanel = new RfidPanel();
-
     private boolean isConnected = false;
     private boolean isReaderStarted = false;
-    private RfidReaderConnection rfidReaderConnection;
-    private RfidTagProcessor rfidTagProcessor;
 
-    public RFIDMarathonApp()  {
+    private final Util util;
+    private final MarathonPanel marathonPanel;
+    private final RfidPanel rfidPanel;
+
+    private final RfidReaderConnection rfidReaderConnection;
+    private final RfidTagProcessor rfidTagProcessor;
+
+    public RFIDMarathonApp() {
+
+        TagStorage storage = new TagStorageService(
+                "jdbc:postgresql://localhost:5432/speedway",
+                "perfectkode",
+                "perfectkode"
+        );
+        this.rfidPanel = new RfidPanel();
+        this.util = new Util(rfidPanel);
+        // Step 1: create panel without handler
+        this.marathonPanel = new MarathonPanel();
+
+        // Step 2: create service with panel
+        SyncDataService syncService = new SyncDataService(marathonPanel, storage, util);
+
+        // Step 3: inject handler back into panel
+        marathonPanel.setSyncHandler(syncService);
+
         initializeUI();
         setupEventHandlers();
 
-        String jdbcUrl = "jdbc:postgresql://localhost:5432/speedway";
-        String username = "perfectkode";
-        String password = "perfectkode";
-
-        TagStorage storage = new TagStorageService(jdbcUrl, username, password);
-        RfidTagProcessor rfidTagProcessor = new RfidTagProcessor(
-                storage,
-                this::addLog
-        );
-
-        rfidReaderConnection = new RfidReaderConnection(
+        this.rfidTagProcessor = new RfidTagProcessor(storage, util);
+        this.rfidReaderConnection = new RfidReaderConnection(
                 rfidTagProcessor,
-                this::addLog,
+                util,
                 count -> rfidPanel.setTagCount(count)
         );
     }
@@ -68,7 +77,6 @@ public class RFIDMarathonApp extends JFrame {
     private void setupEventHandlers() {
         rfidPanel.getConnectButton().addActionListener(e -> handleConnection());
         rfidPanel.getStartReaderButton().addActionListener(e -> handleStartReader());
-        marathonPanel.getSyncButton().addActionListener(e -> handleSync());
 
         marathonPanel.getMarathonNameField().getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void changedUpdate(javax.swing.event.DocumentEvent e) { updateSyncButton(); }
@@ -86,7 +94,7 @@ public class RFIDMarathonApp extends JFrame {
             rfidPanel.getIpAddressField().setEnabled(true);
             rfidPanel.getConnectButton().setText("Connect");
             rfidPanel.getStartReaderButton().setEnabled(false);
-            addLog("Disconnected from RFID reader");
+            util.addLog("Disconnected from RFID reader");
             return;
         }
 
@@ -107,13 +115,13 @@ public class RFIDMarathonApp extends JFrame {
                     rfidPanel.getStartReaderButton().setEnabled(true);
                     rfidPanel.getIpAddressField().setEnabled(false);
                     rfidPanel.getConnectButton().setText("Disconnect");
-                    addLog("Connected to RFID reader at " + ipAddress);
+                    util.addLog("Connected to RFID reader at " + ipAddress);
                 },
                 () -> {
                     rfidPanel.getConnectionStatusLabel().setText("Connection failed");
                     rfidPanel.getConnectionStatusLabel().setForeground(Color.RED);
                     rfidPanel.getConnectButton().setText("Connect");
-                    addLog("Failed to connect to RFID reader");
+                    util.addLog("Failed to connect to RFID reader");
                 });
 
         rfidPanel.getConnectButton().setEnabled(true);
@@ -133,56 +141,6 @@ public class RFIDMarathonApp extends JFrame {
         updateSyncButton();
     }
 
-    private void handleSync() {
-        String marathonName = marathonPanel.getMarathonNameField().getText().trim();
-        int lapNumber = (Integer) marathonPanel.getLapNumberSpinner().getValue();
-
-        if (marathonName.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter marathon name", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        marathonPanel.getSyncButton().setEnabled(false);
-        marathonPanel.getSyncButton().setText("Syncing...");
-        marathonPanel.getSyncStatusLabel().setText("Syncing data to server...");
-        marathonPanel.getSyncStatusLabel().setForeground(Color.BLUE);
-
-        SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
-            @Override
-            protected Boolean doInBackground() throws Exception {
-                Thread.sleep(3000);
-                return Math.random() > 0.2;
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    boolean success = get();
-                    if (success) {
-                        marathonPanel.getSyncStatusLabel().setText(
-                                "Data synced successfully! (" + rfidPanel.getTagCount() + " tags uploaded)");
-                        marathonPanel.getSyncStatusLabel().setForeground(Color.GREEN);
-                        addLog("Marathon '" + marathonName + "' synced successfully with " + rfidPanel.getTagCount() + " tags");
-
-                        // ✅ Clear table after successful sync
-                        if (rfidTagProcessor != null) {
-                            ((TagStorageService) rfidTagProcessor.getStorage()).clearAll();
-                            addLog("🗑 Cleared tag_details table after sync");
-                        }
-                    }
-
-                } catch (Exception ex) {
-                    marathonPanel.getSyncStatusLabel().setText("Sync error occurred");
-                    marathonPanel.getSyncStatusLabel().setForeground(Color.RED);
-                    addLog("Sync error: " + ex.getMessage());
-                }
-                marathonPanel.getSyncButton().setEnabled(true);
-                marathonPanel.getSyncButton().setText("Sync Data to Server");
-            }
-        };
-        worker.execute();
-    }
-
     public void updateSyncButton() {
         boolean enableSync =
                 !marathonPanel.getMarathonNameField().getText().trim().isEmpty()
@@ -193,13 +151,5 @@ public class RFIDMarathonApp extends JFrame {
             marathonPanel.getSyncStatusLabel().setText("🎯 Ready to sync " + rfidPanel.getTagCount() + " RFID tags");
             marathonPanel.getSyncStatusLabel().setForeground(new Color(33, 150, 243));
         }
-    }
-
-    private void addLog(String message) {
-        SwingUtilities.invokeLater(() -> {
-            String ts = new SimpleDateFormat("HH:mm:ss").format(new Date());
-            rfidPanel.getLogsArea().append("[" + ts + "] " + message + "\n");
-            rfidPanel.getLogsArea().setCaretPosition(rfidPanel.getLogsArea().getDocument().getLength());
-        });
     }
 }

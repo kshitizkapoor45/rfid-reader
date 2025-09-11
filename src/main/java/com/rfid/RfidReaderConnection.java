@@ -10,18 +10,18 @@ public class RfidReaderConnection {
 
     private ImpinjReader reader;
     private final RfidTagProcessor rfidTagProcessor;
-    private final Consumer<String> logConsumer;
     private final Consumer<Integer> tagCountConsumer;
+    private final Util util;
 
     private final AtomicInteger tagCount = new AtomicInteger(0);
     private boolean isConnected = false;
     private boolean isStarted = false;
 
     public RfidReaderConnection(RfidTagProcessor rfidTagProcessor,
-                                Consumer<String> logConsumer,
+                                Util util,
                                 Consumer<Integer> tagCountConsumer) {
         this.rfidTagProcessor = rfidTagProcessor;
-        this.logConsumer = logConsumer;
+        this.util = util;
         this.tagCountConsumer = tagCountConsumer;
     }
 
@@ -31,7 +31,7 @@ public class RfidReaderConnection {
             protected Void doInBackground() {
                 try {
                     reader = new ImpinjReader();
-                    log("Connecting to reader: " + hostname);
+                    util.addLog("Connecting to reader: " + hostname);
                     reader.connect(hostname);
 
                     if (!reader.isConnected()) {
@@ -48,7 +48,7 @@ public class RfidReaderConnection {
                     SwingUtilities.invokeLater(onConnected);
 
                 } catch (OctaneSdkException | RuntimeException e) {
-                    log("❌ Error connecting to reader: " + e.getMessage());
+                    util.addLog("❌ Error connecting to reader: " + e.getMessage());
                     SwingUtilities.invokeLater(onFailed);
                 }
                 return null;
@@ -72,7 +72,7 @@ public class RfidReaderConnection {
             antennas.getAntenna(i).setEnabled(true);
             antennas.getAntenna(i).setTxPowerinDbm(30.0);
             antennas.getAntenna(i).setRxSensitivityinDbm(-70);
-            log("Enabled antenna " + i);
+            util.addLog("Enabled antenna " + i);
         }
     }
 
@@ -87,7 +87,7 @@ public class RfidReaderConnection {
 
                 rfidTagProcessor.enqueue(tagDetail);
 
-                log(String.format("📡 Tag detected: %s, Antenna: %d, RSSI: %.2f",
+                util.addLog(String.format("📡 Tag detected: %s, Antenna: %d, RSSI: %.2f",
                         tag.getEpc(), tag.getAntennaPortNumber(), tag.getPeakRssiInDbm()));
 
                 int currentCount = tagCount.incrementAndGet();
@@ -101,9 +101,9 @@ public class RfidReaderConnection {
             try {
                 reader.start();
                 isStarted = true;
-                log("✅ Reader started.");
+                util.addLog("✅ Reader started.");
             } catch (OctaneSdkException e) {
-                log("❌ Error starting reader: " + e.getMessage());
+                util.addLog("❌ Error starting reader: " + e.getMessage());
             }
         }
     }
@@ -113,9 +113,9 @@ public class RfidReaderConnection {
             try {
                 reader.stop();
                 isStarted = false;
-                log("⏹ Reader stopped.");
+                util.addLog("⏹ Reader stopped.");
             } catch (OctaneSdkException e) {
-                log("❌ Error stopping reader: " + e.getMessage());
+                util.addLog("❌ Error stopping reader: " + e.getMessage());
             }
         }
     }
@@ -126,9 +126,9 @@ public class RfidReaderConnection {
                 stopReader();
                 reader.disconnect();
                 isConnected = false;
-                log("🔌 Disconnected from reader.");
+                util.addLog("🔌 Disconnected from reader.");
             } catch (Exception e) {
-                log("❌ Error disconnecting reader: " + e.getMessage());
+                util.addLog("❌ Error disconnecting reader: " + e.getMessage());
             }
         }
     }
@@ -136,9 +136,5 @@ public class RfidReaderConnection {
     public void resetTagCount() {
         tagCount.set(0);
         SwingUtilities.invokeLater(() -> tagCountConsumer.accept(0));
-    }
-
-    private void log(String msg) {
-        SwingUtilities.invokeLater(() -> logConsumer.accept(msg));
     }
 }

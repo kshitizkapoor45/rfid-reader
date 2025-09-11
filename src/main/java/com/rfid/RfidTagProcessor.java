@@ -7,18 +7,18 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class RfidTagProcessor {
     private final BlockingQueue<TagDetail> queue = new LinkedBlockingQueue<>();
     private final TagStorage storage;
-    private final java.util.function.Consumer<String> logConsumer;
+    private final Util util;
     private volatile boolean running = true;
 
-    public RfidTagProcessor(TagStorage storage, java.util.function.Consumer<String> logConsumer) {
+    public RfidTagProcessor(TagStorage storage,Util util) {
         this.storage = storage;
-        this.logConsumer = logConsumer;
+        this.util = util;
         startAsyncConsumer();
     }
 
     public void enqueue(TagDetail tag) {
         queue.offer(tag);
-        logConsumer.accept("🟢 Tag queued: " + tag.getTagId());
+        util.addLog("🟢 Tag queued: " + tag.getTagId());
     }
 
     private void startAsyncConsumer() {
@@ -30,7 +30,7 @@ public class RfidTagProcessor {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } catch (Exception e) {
-                    logConsumer.accept("❌ Error processing tag: " + e.getMessage());
+                    util.addLog("❌ Error processing tag: " + e.getMessage());
                 }
             }
         }, "TagProcessor-Thread");
@@ -46,13 +46,13 @@ public class RfidTagProcessor {
                 TagDetail t = existing.get();
                 t.setLastSeen(tag.getLastSeen());
                 storage.save(t);
-                logConsumer.accept("🔄 Updated existing tag " + t.getTagId());
+                util.addLog("🔄 Updated existing tag " + t.getTagId());
             } else {
                 storage.save(tag);
-                logConsumer.accept("✅ Inserted new tag " + tag.getTagId());
+                util.addLog("✅ Inserted new tag " + tag.getTagId());
             }
         } catch (Exception ex) {
-            logConsumer.accept("⚠ Error saving tag " + tag.getTagId() + ": " + ex.getMessage());
+            util.addLog("⚠ Error saving tag " + tag.getTagId() + ": " + ex.getMessage());
         }
     }
 
