@@ -132,7 +132,7 @@ public class MarathonPanel {
     }
 
     private JSpinner createLapNumberSpinner() {
-        // Spinner model: minimum 1, step 1
+        // Spinner model: minimum 1, max 100, step 1
         lapNumberSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
         lapNumberSpinner.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         lapNumberSpinner.setPreferredSize(new Dimension(250, 35));
@@ -141,23 +141,23 @@ public class MarathonPanel {
         lapNumberSpinner.setBorder(BorderFactory.createLineBorder(new Color(203, 213, 225), 1));
         lapNumberSpinner.setBackground(new Color(249, 250, 251));
 
-        JFormattedTextField spinnerTextField = ((JSpinner.DefaultEditor) lapNumberSpinner.getEditor()).getTextField();
+        JFormattedTextField spinnerTextField =
+                ((JSpinner.DefaultEditor) lapNumberSpinner.getEditor()).getTextField();
 
-        // Restrict typing to digits only and minimum 1
-        spinnerTextField.setDocument(new javax.swing.text.PlainDocument() {
+        // ✅ Ensure default value is visible
+        spinnerTextField.setText(lapNumberSpinner.getValue().toString());
+
+        // ✅ Allow only integers >= 1
+        spinnerTextField.setInputVerifier(new InputVerifier() {
             @Override
-            public void insertString(int offs, String str, javax.swing.text.AttributeSet a) throws javax.swing.text.BadLocationException {
-                if (str == null) return;
-                if (!str.matches("\\d+")) return;
-                String currentText = getText(0, getLength());
-                String newText = currentText.substring(0, offs) + str + currentText.substring(offs);
+            public boolean verify(JComponent input) {
+                String text = ((JTextField) input).getText();
                 try {
-                    int value = Integer.parseInt(newText);
-                    if (value < 1) return;
+                    int value = Integer.parseInt(text);
+                    return value >= 1;
                 } catch (NumberFormatException e) {
-                    return;
+                    return false;
                 }
-                super.insertString(offs, str, a);
             }
         });
 
@@ -173,15 +173,20 @@ public class MarathonPanel {
                 lapNumberSpinner.setBorder(BorderFactory.createLineBorder(new Color(59, 130, 246), 2));
                 spinnerTextField.setBackground(Color.WHITE);
             }
+
             public void focusLost(java.awt.event.FocusEvent evt) {
                 lapNumberSpinner.setBorder(BorderFactory.createLineBorder(new Color(203, 213, 225), 1));
                 spinnerTextField.setBackground(new Color(249, 250, 251));
+
+                // ✅ Reset to minimum if invalid
+                if (!spinnerTextField.getInputVerifier().verify(spinnerTextField)) {
+                    lapNumberSpinner.setValue(1);
+                    spinnerTextField.setText("1");
+                }
             }
         });
 
-        // -------------------
         // Customize arrow buttons
-        // -------------------
         Component[] comps = lapNumberSpinner.getComponents();
         for (Component comp : comps) {
             if (comp instanceof JButton) {
@@ -195,6 +200,7 @@ public class MarathonPanel {
         }
         return lapNumberSpinner;
     }
+
 
 
     private JPanel createInputPanel(String labelText, JComponent inputComponent) {
@@ -227,6 +233,8 @@ public class MarathonPanel {
         syncButton.setMaximumSize(new Dimension(250, 40));
         syncButton.setBackground(new Color(215, 221, 228));
         syncButton.setForeground(Color.WHITE);
+        syncButton.setHorizontalAlignment(SwingConstants.CENTER);
+        syncButton.setVerticalAlignment(SwingConstants.CENTER);
         syncButton.setFocusPainted(false);
         syncButton.setBorder(BorderFactory.createEmptyBorder());
         syncButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
@@ -404,29 +412,8 @@ public class MarathonPanel {
         int result = fileChooser.showOpenDialog(mainPanel);
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFile = fileChooser.getSelectedFile();
-            processUploadedFile(selectedFile);
+            syncHandler.uploadCsv(selectedFile);
         }
-    }
-
-    private void processUploadedFile(File file) {
-        syncStatusLabel.setText("Processing file: " + file.getName());
-        syncStatusLabel.setForeground(new Color(16, 185, 129));
-
-        // Simulate file processing
-        SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
-            @Override
-            protected Void doInBackground() throws Exception {
-                Thread.sleep(3000); // Simulate processing time
-                return null;
-            }
-
-            @Override
-            protected void done() {
-                syncStatusLabel.setText("✅ File uploaded and synced successfully!");
-                syncStatusLabel.setForeground(new Color(34, 197, 94));
-            }
-        };
-        worker.execute();
     }
 
     private void updateSyncButton() {

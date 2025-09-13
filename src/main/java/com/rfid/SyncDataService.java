@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import okhttp3.*;
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.File;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -17,6 +19,7 @@ public class SyncDataService implements SyncHandler {
     private MarathonPanel marathonPanel;
     private TagStorage storage;
     private Util util;
+    private final OkHttpClient client = new OkHttpClient();
 
     public SyncDataService(MarathonPanel marathonPanel, TagStorage storage,Util util){
         this.marathonPanel = marathonPanel;
@@ -106,10 +109,100 @@ public class SyncDataService implements SyncHandler {
         };
         worker.execute();
     }
-
     @Override
-    public void uploadCsv() {
+    public void uploadCsv(File csvFile) {
+        marathonPanel.getSyncStatusLabel().setText("📤 Uploading CSV...");
+        marathonPanel.getSyncStatusLabel().setForeground(new Color(59, 130, 246));
 
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                try {
+                    String marathonName = marathonPanel.getMarathonNameField().getText().trim();
+                    int lapNumber = (Integer) marathonPanel.getLapNumberSpinner().getValue();
+
+                    // ✅ 1. Build multipart request
+                    RequestBody fileBody = RequestBody.create(csvFile, MediaType.parse("text/csv"));
+                    MultipartBody requestBody = new MultipartBody.Builder()
+                            .setType(MultipartBody.FORM)
+                            .addFormDataPart("file", csvFile.getName(), fileBody)
+                            .build();
+
+                    String uploadUrl = "http://localhost:8080/api/rfid/file-upload?marathon="
+                            + marathonName + "&lap=" + lapNumber;
+
+                    Request uploadRequest = new Request.Builder()
+                            .url(uploadUrl)
+                            .post(requestBody)
+                            .build();
+
+                    // ✅ 2. Call /file-upload
+                    try (Response uploadResponse = client.newCall(uploadRequest).execute()) {
+                        if (!uploadResponse.isSuccessful() || uploadResponse.body() == null) {
+                            String body = uploadResponse.body() != null ? uploadResponse.body().string() : "";
+                            String errMsg = parseErrorMessage(body, "Upload failed");
+                            updateErrorUI(errMsg);
+                            return null;
+                        }
+
+                        String parsedRequestBody = uploadResponse.body().string();
+                        util.addLog("Upload success, got parsed body: " + parsedRequestBody);
+
+                        // ✅ 3. Now send parsedRequestBody to /sync
+                        Request syncRequest = new Request.Builder()
+                                .url("http://localhost:8080/api/rfid/sync")
+                                .header("Content-Type", "application/json")
+                                .post(RequestBody.create(parsedRequestBody, MediaType.parse("application/json")))
+                                .build();
+
+                        try (Response syncResponse = client.newCall(syncRequest).execute()) {
+                            if (syncResponse.isSuccessful()) {
+                                String syncBody = syncResponse.body() != null ? syncResponse.body().string() : "";
+                                SwingUtilities.invokeLater(() -> {
+                                    marathonPanel.getSyncStatusLabel().setText("✅ CSV uploaded & synced!");
+                                    marathonPanel.getSyncStatusLabel().setForeground(new Color(34, 197, 94));
+                                    util.addLog("Sync success: " + syncBody);
+                                });
+                            } else {
+                                String syncBody = syncResponse.body() != null ? syncResponse.body().string() : "";
+                                String errorMessage = parseErrorMessage(syncBody, "Sync failed");
+                                updateErrorUI(errorMessage);
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    // 🟢 Only handle truly unexpected errors here
+                    updateErrorUI("Unexpected error: " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+                return null;
+            }
+        };
+        worker.execute();
+    }
+
+    private void updateErrorUI(String message) {
+        SwingUtilities.invokeLater(() -> {
+            marathonPanel.getSyncStatusLabel().setText(message);
+            marathonPanel.getSyncStatusLabel().setForeground(Color.RED);
+            util.addLog("Error: " + message);
+        });
+    }
+
+    private String parseErrorMessage(String responseBody, String defaultMsg) {
+        if (responseBody == null || responseBody.isEmpty()) {
+            return defaultMsg;
+        }
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode node = mapper.readTree(responseBody);
+            if (node.has("errorDescription")) {
+                return node.get("errorDescription").asText();
+            }
+            return responseBody; // raw body if no errorDescription
+        } catch (Exception e) {
+            return responseBody; // fallback: raw body
+        }
     }
 
     private String buildSyncRequestJson(String marathonName, int lapNumber, List<TagDetail> tags) throws Exception {
