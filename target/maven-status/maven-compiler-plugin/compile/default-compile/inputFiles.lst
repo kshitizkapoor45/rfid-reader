@@ -1,5 +1,12 @@
-C:\Users\kapoo\OneDrive\Documents\speedwayRfid\src\main\java\com\rfid\Main.java
-C:\Users\kapoo\OneDrive\Documents\speedwayRfid\src\main\java\com\rfid\MarathonPanel.java
-C:\Users\kapoo\OneDrive\Documents\speedwayRfid\src\main\java\com\rfid\RfidConnection.java
-C:\Users\kapoo\OneDrive\Documents\speedwayRfid\src\main\java\com\rfid\RFIDMarathonApp.java
-C:\Users\kapoo\OneDrive\Documents\speedwayRfid\src\main\java\com\rfid\RfidPanel.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\Main.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\MarathonPanel.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\RFIDMarathonApp.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\RfidPanel.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\RfidReaderConnection.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\RfidTagProcessor.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\SyncDataService.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\SyncHandler.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\TagDetail.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\TagStorage.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\TagStorageService.java
+C:\Users\kapoo\OneDrive\Documents\rfid-reader\src\main\java\com\rfid\Util.java

@@ -8,13 +8,14 @@ public class Main {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             try {
-                UIManager.setLookAndFeel(UIManager.getLookAndFeel());
+                UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel");
+                RFIDMarathonApp app = new RFIDMarathonApp();
+                ImageIcon icon = new ImageIcon(Main.class.getResource("/ICON.png"));
+                app.setIconImage(icon.getImage());
+                app.setVisible(true);
             } catch (Exception e) {
                 e.printStackTrace();
             }
-
-            RFIDMarathonApp app = new RFIDMarathonApp();
-            app.setVisible(true);
         });
     }
 }
