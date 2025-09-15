@@ -1,6 +1,7 @@
 package com.rfid;
 
 import javax.swing.*;
+import javax.swing.text.html.HTML;
 import java.awt.*;
 import java.util.function.Consumer;
 
@@ -10,19 +11,33 @@ public class RfidPanel {
     private JTextField ipAddressField;
     private JButton connectButton;
     private JButton startReaderButton;
+    private JButton downloadReportsButton;
     private JLabel connectionStatusLabel;
     private JTextArea logsArea;
     private JLabel tagCountLabel;
+    private SyncHandler syncHandler;
+
+    public RfidPanel(SyncHandler syncHandler) {
+        this.syncHandler = syncHandler;
+    }
+    public RfidPanel() {
+    }
+
+    public void setSyncHandler(SyncHandler syncHandler) {
+        this.syncHandler = syncHandler;
+    }
 
     private int tagCount = 0;
     private Consumer<Void> onLogsCleared;
-
     public JPanel createRFIDPanel() {
         mainPanel = new JPanel(new BorderLayout(10, 10));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         // Top controls
-        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JPanel topPanel = new JPanel(new BorderLayout());
+
+        // Left side controls
+        JPanel leftControls = new JPanel(new FlowLayout(FlowLayout.LEFT));
         ipAddressField = new JTextField(15);
         connectButton = new JButton("Connect");
         startReaderButton = new JButton("Start RFID Reader");
@@ -30,15 +45,24 @@ public class RfidPanel {
         connectionStatusLabel = new JLabel("Not connected");
         connectionStatusLabel.setForeground(Color.RED);
 
-        topPanel.add(new JLabel("Reader IP:"));
-        topPanel.add(ipAddressField);
-        topPanel.add(connectButton);
-        topPanel.add(startReaderButton);
-        topPanel.add(connectionStatusLabel);
+        leftControls.add(new JLabel("Reader IP:"));
+        leftControls.add(ipAddressField);
+        leftControls.add(connectButton);
+        leftControls.add(startReaderButton);
+        leftControls.add(connectionStatusLabel);
 
         // Tag count
         tagCountLabel = new JLabel("Tags detected: 0");
-        topPanel.add(tagCountLabel);
+        leftControls.add(tagCountLabel);
+
+        // Right side controls
+        JPanel rightControls = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        downloadReportsButton = new JButton("Report");
+
+        rightControls.add(downloadReportsButton);
+
+        topPanel.add(leftControls, BorderLayout.WEST);
+        topPanel.add(rightControls, BorderLayout.EAST);
 
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
@@ -60,6 +84,10 @@ public class RfidPanel {
         mainPanel.add(logsPanel, BorderLayout.CENTER);
 
         return mainPanel;
+    }
+
+    public void handleDownloadReport() {
+        syncHandler.downloadReport();
     }
 
     // === Public getters & setters for RFIDMarathonApp ===
@@ -87,6 +115,14 @@ public class RfidPanel {
     public void setTagCount(int count) {
         this.tagCount = count;
         tagCountLabel.setText("Tags detected: " + tagCount);
+    }
+
+    public JButton getDownloadReportsButton() {
+        return downloadReportsButton;
+    }
+
+    public void setDownloadReportsButton(JButton downloadReportsButton) {
+        this.downloadReportsButton = downloadReportsButton;
     }
 
     public int getTagCount() {

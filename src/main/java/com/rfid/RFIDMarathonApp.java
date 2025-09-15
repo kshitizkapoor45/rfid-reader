@@ -25,7 +25,7 @@ public class RFIDMarathonApp extends JFrame {
         );
         this.rfidPanel = new RfidPanel();
         this.util = new Util(rfidPanel);
-        // Step 1: create panel without handler
+        // Step 1: create marathon panel
         this.marathonPanel = new MarathonPanel();
 
         // Step 2: create service with panel
@@ -33,6 +33,7 @@ public class RFIDMarathonApp extends JFrame {
 
         // Step 3: inject handler back into panel
         marathonPanel.setSyncHandler(syncService);
+        rfidPanel.setSyncHandler(syncService);
 
         initializeUI();
         setupEventHandlers();
@@ -77,6 +78,7 @@ public class RFIDMarathonApp extends JFrame {
     private void setupEventHandlers() {
         rfidPanel.getConnectButton().addActionListener(e -> handleConnection());
         rfidPanel.getStartReaderButton().addActionListener(e -> handleStartReader());
+        rfidPanel.getDownloadReportsButton().addActionListener(e -> rfidPanel.handleDownloadReport());
 
         marathonPanel.getMarathonNameField().getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void changedUpdate(javax.swing.event.DocumentEvent e) { updateSyncButton(); }
