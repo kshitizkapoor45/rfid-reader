@@ -190,6 +190,14 @@ public class SyncDataService implements SyncHandler {
         try {
             // 1. Fetch all tag details
             List<TagDetail> tags = storage.findAll();
+            if(tags.isEmpty()){
+                SwingUtilities.invokeLater(() -> {
+                    marathonPanel.getSyncStatusLabel().setText("No tags found to be synced");
+                    marathonPanel.getSyncStatusLabel().setForeground(Color.ORANGE);
+                    util.addLog("No tags found in database.");
+                });
+                return;
+            }
 
             // 2. Generate Excel report
             ByteArrayInputStream stream = report.generateCustomerReport(tags);
