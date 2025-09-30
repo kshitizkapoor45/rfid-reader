@@ -3,6 +3,7 @@ package com.rfid;
 import com.impinj.octane.*;
 
 import javax.swing.*;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -78,12 +79,14 @@ public class RfidReaderConnection {
 
     private void configureTagListener() {
         reader.setTagReportListener((r, report) -> {
+            Instant now = Instant.now();
             for (Tag tag : report.getTags()) {
                 TagDetail tagDetail = new TagDetail();
                 tagDetail.setTagId(tag.getEpc().toString());
                 tagDetail.setAntenna(tag.getAntennaPortNumber());
-                tagDetail.setFirstSeen(tag.getFirstSeenTime().getLocalDateTime().toInstant());
-                tagDetail.setLastSeen(tag.getLastSeenTime().getLocalDateTime().toInstant());
+                tagDetail.setFirstSeen(now);
+                tagDetail.setLastSeen(now);
+                tagDetail.setReader(r.getAddress());
 
                 rfidTagProcessor.enqueue(tagDetail);
 

@@ -8,10 +8,7 @@ import okhttp3.*;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -190,7 +187,7 @@ public class SyncDataService implements SyncHandler {
         try {
             // 1. Fetch all tag details
             List<TagDetail> tags = storage.findAll();
-            if(tags.isEmpty()){
+            if (tags.isEmpty()) {
                 SwingUtilities.invokeLater(() -> {
                     marathonPanel.getSyncStatusLabel().setText("No tags found to be synced");
                     marathonPanel.getSyncStatusLabel().setForeground(Color.ORANGE);
@@ -199,34 +196,33 @@ public class SyncDataService implements SyncHandler {
                 return;
             }
 
-            // 2. Generate Excel report
-            ByteArrayInputStream stream = report.generateCustomerReport(tags);
-
-            // 3. Open file chooser dialog
+            // 2. Open file chooser dialog for CSV
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setDialogTitle("Save RFID Report");
-            fileChooser.setSelectedFile(new File("rfid-report.xlsx"));
+            fileChooser.setSelectedFile(new File("rfid-report.csv"));
 
             int userSelection = fileChooser.showSaveDialog(null);
 
             if (userSelection == JFileChooser.APPROVE_OPTION) {
                 File fileToSave = fileChooser.getSelectedFile();
 
-                // 4. Write the Excel file to disk
-                try (FileOutputStream fos = new FileOutputStream(fileToSave)) {
-                    byte[] buffer = new byte[1024];
-                    int bytesRead;
-                    while ((bytesRead = stream.read(buffer)) != -1) {
-                        fos.write(buffer, 0, bytesRead);
+                // 3. Write CSV file to disk
+                try (PrintWriter writer = new PrintWriter(new FileWriter(fileToSave))) {
+                    writer.println("tagId,antenna,firstSeen,lastSeen");
+                    // Data rows
+                    for (TagDetail tag : tags) {
+                        writer.printf("%s,%d,%s,%s%n",
+                                tag.getTagId(),
+                                tag.getAntenna(),
+                                tag.getFirstSeen() != null ? tag.getFirstSeen().toString() : "",
+                                tag.getLastSeen() != null ? tag.getLastSeen().toString() : "");
                     }
                 }
-
                 JOptionPane.showMessageDialog(null,
                         "Report saved to:\n" + fileToSave.getAbsolutePath(),
                         "Download Complete",
                         JOptionPane.INFORMATION_MESSAGE);
             }
-
         } catch (IOException e) {
             e.printStackTrace();
             JOptionPane.showMessageDialog(null,

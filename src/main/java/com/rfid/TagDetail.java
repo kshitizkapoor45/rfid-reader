@@ -7,8 +7,17 @@ public class TagDetail {
     private int antenna;
     private Instant firstSeen;
     private Instant lastSeen;
+    private String reader;
 
     public TagDetail() {
+    }
+
+    public String getReader() {
+        return reader;
+    }
+
+    public void setReader(String reader) {
+        this.reader = reader;
     }
 
     public String getTagId() {
