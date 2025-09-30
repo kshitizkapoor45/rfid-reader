@@ -18,6 +18,10 @@ public class RfidReaderConnection {
     private boolean isConnected = false;
     private boolean isStarted = false;
 
+    public int getTagCount() {
+        return tagCount.get();
+    }
+
     public RfidReaderConnection(RfidTagProcessor rfidTagProcessor,
                                 Util util,
                                 Consumer<Integer> tagCountConsumer) {

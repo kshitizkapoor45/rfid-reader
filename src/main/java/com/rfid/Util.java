@@ -10,11 +10,12 @@ public class Util {
     public Util(RfidPanel rfidPanel) {
         this.rfidPanel = rfidPanel;
     }
+
     public void addLog(String message) {
+        if (rfidPanel == null) return;
         SwingUtilities.invokeLater(() -> {
             String ts = new SimpleDateFormat("HH:mm:ss").format(new Date());
-            rfidPanel.getLogsArea().append("[" + ts + "] " + message + "\n");
-            rfidPanel.getLogsArea().setCaretPosition(rfidPanel.getLogsArea().getDocument().getLength());
+            rfidPanel.appendLog("[" + ts + "] " + message);
         });
     }
 }

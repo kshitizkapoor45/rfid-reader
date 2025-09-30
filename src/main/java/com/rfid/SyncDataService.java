@@ -57,7 +57,7 @@ public class SyncDataService implements SyncHandler {
                     // 3. Send POST request
                     HttpClient client = HttpClient.newHttpClient();
                     HttpRequest request = HttpRequest.newBuilder()
-                            .uri(URI.create("http://localhost:8080/api/rfid/sync"))
+                            .uri(URI.create("http://localhost:8083/api/rfid/sync"))
                             .header("Content-Type", "application/json")
                             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                             .build();
@@ -129,7 +129,7 @@ public class SyncDataService implements SyncHandler {
                             .addFormDataPart("file", csvFile.getName(), fileBody)
                             .build();
 
-                    String uploadUrl = "http://localhost:8080/api/rfid/file-upload?marathon="
+                    String uploadUrl = "http://localhost:8083/api/rfid/file-upload?marathon="
                             + marathonName + "&lap=" + lapNumber;
 
                     Request uploadRequest = new Request.Builder()
@@ -151,7 +151,7 @@ public class SyncDataService implements SyncHandler {
 
                         // ✅ 3. Now send parsedRequestBody to /sync
                         Request syncRequest = new Request.Builder()
-                                .url("http://localhost:8080/api/rfid/sync")
+                                .url("http://localhost:8083/api/rfid/sync")
                                 .header("Content-Type", "application/json")
                                 .post(RequestBody.create(parsedRequestBody, MediaType.parse("application/json")))
                                 .build();
