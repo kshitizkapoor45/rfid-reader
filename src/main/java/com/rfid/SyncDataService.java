@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.impinj.octane.Tag;
 import okhttp3.*;
 
 import javax.swing.*;
@@ -230,6 +231,12 @@ public class SyncDataService implements SyncHandler {
                     "Error",
                     JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    @Override
+    public void fetchUnsyncedIpTags() {
+        List<TagDetail> tags = storage.findReaderIp();
+
     }
 
     private void updateErrorUI(String message) {

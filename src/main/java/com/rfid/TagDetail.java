@@ -9,6 +9,16 @@ public class TagDetail {
     private Instant lastSeen;
     private String reader;
 
+    public TagStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(TagStatus status) {
+        this.status = status;
+    }
+
+    private TagStatus status;
+
     public TagDetail() {
     }
 
@@ -52,10 +62,11 @@ public class TagDetail {
         this.lastSeen = lastSeen;
     }
 
-    public TagDetail(String tagId, int antenna, Instant firstSeen, Instant lastSeen) {
+    public TagDetail(String tagId, int antenna, Instant firstSeen, Instant lastSeen, String reader) {
         this.tagId = tagId;
         this.antenna = antenna;
         this.firstSeen = firstSeen;
         this.lastSeen = lastSeen;
+        this.reader = reader;
     }
 }

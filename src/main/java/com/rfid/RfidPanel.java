@@ -39,11 +39,10 @@ public class RfidPanel {
     }
 
     public JPanel createRFIDPanel() {
-        mainPanel = new JPanel(new BorderLayout(15,15));
-        mainPanel.setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
+        mainPanel = new JPanel(new BorderLayout(15, 15));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // Top controls
-        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT,10,5));
+        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         addReaderButton = new JButton("+ Add Reader");
         startAllButton = new JButton("Start All");
         stopAllButton = new JButton("Stop All");
@@ -54,23 +53,27 @@ public class RfidPanel {
         topPanel.add(addReaderButton);
         topPanel.add(startAllButton);
         topPanel.add(stopAllButton);
-
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
-        // Readers container
+        // 🔹 Readers container with NO vertical gaps
         readersPanel = new JPanel();
         readersPanel.setLayout(new BoxLayout(readersPanel, BoxLayout.Y_AXIS));
+        readersPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
         JScrollPane scroll = new JScrollPane(readersPanel);
-        scroll.setPreferredSize(new Dimension(0,200));
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getVerticalScrollBar().setUnitIncrement(12);
+        scroll.setPreferredSize(new Dimension(0, 200));
         mainPanel.add(scroll, BorderLayout.CENTER);
 
-        // Logs area
-        logsArea = new JTextArea(10,50);
+        // 🔹 Logs area
+        logsArea = new JTextArea(10, 50);
         logsArea.setEditable(false);
         JScrollPane logScroll = new JScrollPane(logsArea);
+        logScroll.setBorder(BorderFactory.createTitledBorder("Logs"));
         mainPanel.add(logScroll, BorderLayout.SOUTH);
 
-        // Button actions
+        // 🔹 Button actions
         addReaderButton.addActionListener(e -> addNewReader());
         startAllButton.addActionListener(e -> startAllReaders());
         stopAllButton.addActionListener(e -> stopAllReaders());
@@ -79,42 +82,61 @@ public class RfidPanel {
     }
 
     private void addNewReader() {
-        // Reset reader ID if no readers exist
-        if (readerCards.isEmpty()) {
-            nextReaderId = 1;
-        }
+        int newId = getNextAvailableId();
 
-        // Create the reader card
         ReaderCard card = new ReaderCard(
-                "Reader " + nextReaderId++,
+                "Reader " + newId,
                 connectionManager,
                 this::updateTotalTagCount,
                 this::appendLog
         );
 
-        // Set the delete callback
+        // Delete callback
         card.setDeleteCallback(() -> {
-            readersPanel.remove(card.getPanel());
+            readersPanel.remove(card.getPanel().getParent());
             readerCards.remove(card);
             readersPanel.revalidate();
             readersPanel.repaint();
             updateTotalTagCount();
             updateGlobalButtons();
-
-            // Reset nextReaderId if no readers left
-            if (readerCards.isEmpty()) {
-                nextReaderId = 1;
-            }
         });
 
-        // Add card to panel and list
+        JPanel cardPanel = card.getPanel();
+        cardPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+
+        // ✅ Create wrapper with ZERO spacing
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setBorder(BorderFactory.createEmptyBorder(0, 0, 1, 0));
+        wrapper.add(cardPanel, BorderLayout.CENTER);
+
+        // ✅ Set maximum height to prevent BoxLayout from adding vertical space
+        wrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, wrapper.getPreferredSize().height));
+
         readerCards.add(card);
-        readersPanel.add(card.getPanel());
-        readersPanel.add(Box.createVerticalStrut(10));
+        readersPanel.add(wrapper);
+
+//        JSeparator separator = new JSeparator();
+//        separator.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+//        readersPanel.add(separator);
+
         readersPanel.revalidate();
         readersPanel.repaint();
 
         updateGlobalButtons();
+    }
+
+    private int getNextAvailableId() {
+        List<Integer> usedIds = readerCards.stream()
+                .map(card -> Integer.parseInt(card.getReaderName().replace("Reader ", "")))
+                .sorted()
+                .toList();
+
+        int id = 1;
+        for (int usedId : usedIds) {
+            if (usedId == id) id++;
+            else break;
+        }
+        return id;
     }
 
     private void startAllReaders() {

@@ -6,4 +6,5 @@ public interface SyncHandler {
     void syncFromDatabase();
     void uploadCsv(File csvFile);
     void downloadReport();
+    void fetchUnsyncedIpTags();
 }

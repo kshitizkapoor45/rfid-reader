@@ -40,7 +40,7 @@ public class RfidTagProcessor {
 
     private void processTag(TagDetail tag) {
         try {
-            Optional<TagDetail> existing = storage.findByTagIdAndAntenna(tag.getTagId(), tag.getAntenna());
+            Optional<TagDetail> existing = storage.findByTagIdAndReader(tag.getTagId(),tag.getReader());
 
             if (existing.isPresent()) {
                 TagDetail t = existing.get();

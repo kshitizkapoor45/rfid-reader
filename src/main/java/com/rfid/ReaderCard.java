@@ -13,12 +13,15 @@ public class ReaderCard {
     private int tagCount = 0;
 
     private String ipAddress = ""; // store IP
+    private String readerName;     // ✅ new field
     private Runnable deleteCallback;
 
     public ReaderCard(String name,
                       ReaderConnectionManager manager,
                       Runnable updateTotalTagCount,
                       Consumer<String> logCallback) {
+
+        this.readerName = name; // ✅ store reader name
 
         panel = new JPanel(new FlowLayout(FlowLayout.LEFT,10,5));
         ipField = new JTextField(12);
@@ -54,16 +57,16 @@ public class ReaderCard {
                         },
                         () -> {
                             connected = true;
-                            ipAddress = ip; // store the IP
+                            ipAddress = ip;
                             startButton.setEnabled(true);
                             connectButton.setText("Disconnect");
                             connectButton.setEnabled(true);
-                            logCallback.accept(name + " connected to " + ip);
+                            logCallback.accept(readerName + " connected to " + ip);
                         },
                         () -> {
                             connected = false;
                             connectButton.setEnabled(true);
-                            logCallback.accept(name + " connection failed");
+                            logCallback.accept(readerName + " connection failed");
                         }
                 );
             } else {
@@ -72,7 +75,7 @@ public class ReaderCard {
                 connected = false;
                 startButton.setEnabled(false);
                 connectButton.setText("Connect");
-                logCallback.accept(name + " disconnected");
+                logCallback.accept(readerName + " disconnected");
             }
         });
 
@@ -82,7 +85,7 @@ public class ReaderCard {
                 manager.startReader(ipAddress);
                 reading = true;
                 startButton.setText("Stop");
-                logCallback.accept(name + " started reading");
+                logCallback.accept(readerName + " started reading");
             } else {
                 stopReading(manager, ipAddress, logCallback);
             }
@@ -107,4 +110,5 @@ public class ReaderCard {
     public int getTagCount() { return tagCount; }
     public void setDeleteCallback(Runnable deleteCallback) { this.deleteCallback = deleteCallback; }
     public String getIpAddress() { return ipAddress; }
+    public String getReaderName() { return readerName; }
 }

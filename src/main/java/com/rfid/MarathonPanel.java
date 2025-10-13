@@ -92,7 +92,7 @@ public class MarathonPanel {
 
         // Lap Number Field
         gbc.gridy = 1;
-        formPanel.add(createInputPanel("Number of Laps", createLapNumberSpinner()), gbc);
+        formPanel.add(createInputPanel("Lap Number", createLapNumberSpinner()), gbc);
 
         // Sync Button
         gbc.gridy = 2;

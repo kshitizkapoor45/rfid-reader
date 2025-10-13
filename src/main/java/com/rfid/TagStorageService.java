@@ -37,7 +37,10 @@ public class TagStorageService implements TagStorage {
                     antenna INT NOT NULL,
                     first_seen TIMESTAMP,
                     last_seen TIMESTAMP,
-                    CONSTRAINT unique_tag UNIQUE(tag_id, antenna)
+                    reader_ip VARCHAR(255) NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'NOT_SYNCED'
+                                CHECK (status IN ('SYNCED', 'NOT_SYNCED')),
+                    CONSTRAINT unique_tag UNIQUE(tag_id, reader_ip)
                 )
                 """;
         try (Connection conn = getConnection();
@@ -49,19 +52,20 @@ public class TagStorageService implements TagStorage {
     }
 
     @Override
-    public Optional<TagDetail> findByTagIdAndAntenna(String tagId, int antenna) {
-        String sql = "SELECT tag_id, antenna, first_seen, last_seen FROM tag_details WHERE tag_id = ? AND antenna = ?";
+    public Optional<TagDetail> findByTagIdAndReader(String tagId, String reader) {
+        String sql = "SELECT tag_id, antenna, first_seen, last_seen, reader_ip FROM tag_details WHERE tag_id = ? AND reader_ip = ?";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, tagId);
-            ps.setInt(2, antenna);
+            ps.setString(2,reader);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return Optional.of(new TagDetail(
                             rs.getString("tag_id"),
                             rs.getInt("antenna"),
                             rs.getTimestamp("first_seen").toInstant(),
-                            rs.getTimestamp("last_seen").toInstant()
+                            rs.getTimestamp("last_seen").toInstant(),
+                            rs.getString("reader_ip")
                     ));
                 }
             }
@@ -73,7 +77,7 @@ public class TagStorageService implements TagStorage {
 
     @Override
     public List<TagDetail> findAll() {
-        String sql = "SELECT tag_id, antenna, first_seen, last_seen FROM tag_details";
+        String sql = "SELECT tag_id, antenna, first_seen, last_seen, reader_ip FROM tag_details";
         List<TagDetail> tagDetails = new ArrayList<>();
 
         try (Connection con = getConnection();
@@ -84,6 +88,15 @@ public class TagStorageService implements TagStorage {
                 TagDetail tagDetail = new TagDetail();
                 tagDetail.setTagId(rs.getString("tag_id"));
                 tagDetail.setAntenna(rs.getInt("antenna"));
+                tagDetail.setReader(rs.getString("reader_ip"));
+                String statusStr = rs.getString("status");
+                if (statusStr != null) {
+                    try {
+                        tagDetail.setStatus(TagStatus.valueOf(statusStr));
+                    } catch (IllegalArgumentException ex) {
+                        System.err.println("Unknown status: " + statusStr);
+                    }
+                }
 
                 Timestamp firstSeenTs = rs.getTimestamp("first_seen");
                 if (firstSeenTs != null) {
@@ -113,11 +126,49 @@ public class TagStorageService implements TagStorage {
     }
 
     @Override
+    public List<TagDetail> findReaderIp() {
+        String sql = "SELECT reader_ip FROM tag_details WHERE status = 'NOT_SYNCED'";
+        List<TagDetail> tagDetails = new ArrayList<>();
+
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                TagDetail tagDetail = new TagDetail();
+                tagDetail.setTagId(rs.getString("tag_id"));
+                tagDetail.setAntenna(rs.getInt("antenna"));
+                tagDetail.setReader(rs.getString("reader_ip"));
+                String statusStr = rs.getString("status");
+                if (statusStr != null) {
+                    try {
+                        tagDetail.setStatus(TagStatus.valueOf(statusStr));
+                    } catch (IllegalArgumentException ex) {
+                        System.err.println("Unknown status: " + statusStr);
+                    }
+                }
+                Timestamp firstSeenTs = rs.getTimestamp("first_seen");
+                if (firstSeenTs != null) {
+                    tagDetail.setFirstSeen(firstSeenTs.toInstant());
+                }
+                Timestamp lastSeenTs = rs.getTimestamp("last_seen");
+                if (lastSeenTs != null) {
+                    tagDetail.setLastSeen(lastSeenTs.toInstant());
+                }
+                tagDetails.add(tagDetail);
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return tagDetails;
+    }
+
+    @Override
     public void save(TagDetail tag) {
         String sql = """
-                INSERT INTO tag_details (tag_id, antenna, first_seen, last_seen)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT (tag_id, antenna)
+                INSERT INTO tag_details (tag_id, antenna, first_seen, last_seen, reader_ip)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (tag_id,reader_ip)
                 DO UPDATE SET last_seen = EXCLUDED.last_seen
                 """;
         try (Connection conn = getConnection();
@@ -126,6 +177,7 @@ public class TagStorageService implements TagStorage {
             ps.setInt(2, tag.getAntenna());
             ps.setTimestamp(3, Timestamp.from(tag.getFirstSeen()));
             ps.setTimestamp(4, Timestamp.from(tag.getLastSeen()));
+            ps.setString(5,tag.getReader());
             ps.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
