@@ -14,7 +14,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class SyncDataService implements SyncHandler {
     private MarathonPanel marathonPanel;
@@ -30,21 +32,18 @@ public class SyncDataService implements SyncHandler {
     }
 
     @Override
-    public void syncFromDatabase() {
-        marathonPanel.getSyncStatusLabel().setText("🔄 Syncing data from database...");
+    public void normalSyncFromDatabase(Map<Integer,List<String>> lapInMap) {
+        marathonPanel.getSyncStatusLabel().setText("Syncing data from database...");
         marathonPanel.getSyncStatusLabel().setForeground(new Color(59, 130, 246));
 
         SwingWorker<Void, Void> worker = new SwingWorker<>() {
             @Override
             protected Void doInBackground() throws Exception {
                 try {
-                    // 1. Fetch marathon info from DB
                     String marathonName = marathonPanel.getMarathonNameField().getText().trim();
-                    int lapNumber = (Integer) marathonPanel.getLapNumberSpinner().getValue();
+                    Map<Integer, List<TagDetail>> lapTags = buildLapTagMap(lapInMap);
 
-                    // Example: fetch tags from DB (replace with real DAO/service)
-                    List<TagDetail> tags = storage.findAll();
-                    if (tags.isEmpty()) {
+                    if (lapTags.isEmpty()) {
                         SwingUtilities.invokeLater(() -> {
                             marathonPanel.getSyncStatusLabel().setText("No tags found to be synced");
                             marathonPanel.getSyncStatusLabel().setForeground(Color.ORANGE);
@@ -52,9 +51,7 @@ public class SyncDataService implements SyncHandler {
                         });
                         return null;
                     }
-                    // 2. Build JSON
-                    String jsonBody = buildSyncRequestJson(marathonName, lapNumber, tags);
-
+                    String jsonBody = buildSyncRequestJson(marathonName, lapTags);
                     // 3. Send POST request
                     HttpClient client = HttpClient.newHttpClient();
                     HttpRequest request = HttpRequest.newBuilder()
@@ -67,7 +64,11 @@ public class SyncDataService implements SyncHandler {
 
                     if (response.statusCode() == 200) {
                         try {
-                            storage.deleteAll();
+                            List<String> allSyncedIps = lapInMap.values().stream()
+                                    .flatMap(List::stream)
+                                    .distinct()
+                                    .collect(Collectors.toList());
+                            storage.deleteByReaderIps(allSyncedIps);
                         } catch (Exception ex) {
                             util.addLog("Failed to clear local tags: " + ex.getMessage());
                             ex.printStackTrace();
@@ -111,8 +112,119 @@ public class SyncDataService implements SyncHandler {
         };
         worker.execute();
     }
+
     @Override
-    public void uploadCsv(File csvFile) {
+    public void mergeSyncFromDatabase(Map<Integer, List<String>> lapIpMap) {
+        marathonPanel.getSyncStatusLabel().setText("🔄 Merging and syncing data...");
+        marathonPanel.getSyncStatusLabel().setForeground(new Color(59, 130, 246));
+
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                try {
+                    String marathonName = marathonPanel.getMarathonNameField().getText().trim();
+                    Map<Integer, List<TagDetail>> mergedLapTagMap = new HashMap<>();
+
+                    for (Map.Entry<Integer, List<String>> entry : lapIpMap.entrySet()) {
+                        int lapNumber = entry.getKey();
+                        List<String> ips = entry.getValue();
+
+                        List<TagDetail> allTags = new ArrayList<>();
+                        for (String ip : ips) {
+                            List<TagDetail> tags = storage.findTagDetailsByIp(ip);
+                            if (tags != null) allTags.addAll(tags);
+                        }
+
+                        Map<String, TagDetail> uniqueTags = allTags.stream()
+                                .collect(Collectors.toMap(
+                                        TagDetail::getTagId,
+                                        t -> t,
+                                        (t1, t2) -> t1.getLastSeen().isAfter(t2.getLastSeen()) ? t1 : t2
+                                ));
+
+                        mergedLapTagMap.put(lapNumber, new ArrayList<>(uniqueTags.values()));
+                    }
+
+                    if (mergedLapTagMap.isEmpty()) {
+                        SwingUtilities.invokeLater(() -> {
+                            marathonPanel.getSyncStatusLabel().setText("No tags found to merge or sync");
+                            marathonPanel.getSyncStatusLabel().setForeground(Color.ORANGE);
+                            util.addLog("No tags found to merge, skipping sync.");
+                        });
+                        return null;
+                    }
+
+                    String jsonBody = buildSyncRequestJson(marathonName, mergedLapTagMap);
+
+                    // 4️⃣ Send to server
+                    HttpClient client = HttpClient.newHttpClient();
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create("http://localhost:8083/api/rfid/sync"))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                            .build();
+
+                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                    // 5️⃣ On success → delete merged IP records
+                    if (response.statusCode() == 200) {
+                        try {
+                            List<String> allSyncedIps = lapIpMap.values().stream()
+                                    .flatMap(List::stream)
+                                    .distinct()
+                                    .collect(Collectors.toList());
+                            storage.deleteByReaderIps(allSyncedIps);
+                        } catch (Exception ex) {
+                            util.addLog("Failed to clear merged IP tags: " + ex.getMessage());
+                        }
+
+                        SwingUtilities.invokeLater(() -> {
+                            marathonPanel.getSyncStatusLabel().setText("Merge sync completed successfully!");
+                            marathonPanel.getSyncStatusLabel().setForeground(new Color(34, 197, 94));
+                            util.addLog("Merge sync successful: " + response.body());
+                        });
+                    } else {
+                        SwingUtilities.invokeLater(() -> {
+                            marathonPanel.getSyncStatusLabel().setText("Merge sync failed!");
+                            marathonPanel.getSyncStatusLabel().setForeground(Color.RED);
+                            util.addLog("Merge sync failed: " + response.body());
+                        });
+                    }
+
+                } catch (Exception ex) {
+                    SwingUtilities.invokeLater(() -> {
+                        marathonPanel.getSyncStatusLabel().setText("Something went wrong during merge sync!");
+                        marathonPanel.getSyncStatusLabel().setForeground(Color.RED);
+                        util.addLog("Error in merge sync: " + ex.getMessage());
+                    });
+                }
+                return null;
+            }
+        };
+        worker.execute();
+    }
+
+    private Map<Integer, List<TagDetail>> buildLapTagMap(Map<Integer, List<String>> lapIpMap) {
+        Map<Integer, List<TagDetail>> lapTagMap = new HashMap<>();
+
+        for (Map.Entry<Integer, List<String>> entry : lapIpMap.entrySet()) {
+            int lapNumber = entry.getKey();
+            List<String> ips = entry.getValue();
+
+            List<TagDetail> tagsForLap = ips.stream()
+                    .flatMap(ip -> storage.findTagDetailsByIp(ip).stream()) // ✅ flatten List<TagDetail>
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+
+            if (!tagsForLap.isEmpty()) {
+                lapTagMap.put(lapNumber, tagsForLap);
+            }
+        }
+        return lapTagMap;
+    }
+
+    @Override
+    public void uploadCsv(File csvFile,Map<Integer,List<String>> lapInMap) {
         marathonPanel.getSyncStatusLabel().setText("📤 Uploading CSV...");
         marathonPanel.getSyncStatusLabel().setForeground(new Color(59, 130, 246));
 
@@ -121,17 +233,30 @@ public class SyncDataService implements SyncHandler {
             protected Void doInBackground() {
                 try {
                     String marathonName = marathonPanel.getMarathonNameField().getText().trim();
-                    int lapNumber = (Integer) marathonPanel.getLapNumberSpinner().getValue();
 
-                    // ✅ 1. Build multipart request
+                    List<CsvRequest> requests = new ArrayList<>();
+                    lapInMap.forEach((lap, readers) ->
+                            readers.forEach(reader ->
+                                    requests.add(new CsvRequest(lap, reader))
+                            )
+                    );
+                    ObjectMapper mapper = new ObjectMapper();
+                    String requestsJson = mapper.writeValueAsString(requests);
+
                     RequestBody fileBody = RequestBody.create(csvFile, MediaType.parse("text/csv"));
                     MultipartBody requestBody = new MultipartBody.Builder()
                             .setType(MultipartBody.FORM)
-                            .addFormDataPart("file", csvFile.getName(), fileBody)
+                            .addFormDataPart("file", csvFile.getName(),
+                                    RequestBody.create(csvFile, MediaType.parse("text/csv"))
+                            )
+                            .addFormDataPart("marathon", marathonName)
+                            .addFormDataPart("requests", null,
+                                    RequestBody.create(requestsJson, MediaType.parse("application/json"))
+                            )
                             .build();
 
                     String uploadUrl = "http://localhost:8083/api/rfid/file-upload?marathon="
-                            + marathonName + "&lap=" + lapNumber;
+                            + marathonName;
 
                     Request uploadRequest = new Request.Builder()
                             .url(uploadUrl)
@@ -160,6 +285,104 @@ public class SyncDataService implements SyncHandler {
                         try (Response syncResponse = client.newCall(syncRequest).execute()) {
                             if (syncResponse.isSuccessful()) {
                                 String syncBody = syncResponse.body() != null ? syncResponse.body().string() : "";
+                                List<String> allSyncedIps = lapInMap.values().stream()
+                                        .flatMap(List::stream)
+                                        .distinct()
+                                        .collect(Collectors.toList());
+                                storage.deleteByReaderIps(allSyncedIps);
+                                SwingUtilities.invokeLater(() -> {
+                                    marathonPanel.getSyncStatusLabel().setText("✅ CSV uploaded & synced!");
+                                    marathonPanel.getSyncStatusLabel().setForeground(new Color(34, 197, 94));
+                                    util.addLog("Sync success: " + syncBody);
+                                });
+                            } else {
+                                String syncBody = syncResponse.body() != null ? syncResponse.body().string() : "";
+                                String errorMessage = parseErrorMessage(syncBody, "Sync failed");
+                                updateErrorUI(errorMessage);
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    // 🟢 Only handle truly unexpected errors here
+                    updateErrorUI("Unexpected error: " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+                return null;
+            }
+        };
+        worker.execute();
+    }
+
+    @Override
+    public void mergeUploadCsv(File csvFile, Map<Integer, List<String>> lapInMap) {
+        marathonPanel.getSyncStatusLabel().setText("📤 Uploading CSV...");
+        marathonPanel.getSyncStatusLabel().setForeground(new Color(59, 130, 246));
+
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                try {
+                    String marathonName = marathonPanel.getMarathonNameField().getText().trim();
+
+                    List<CsvRequest> requests = new ArrayList<>();
+                    lapInMap.forEach((lap, readers) ->
+                            readers.forEach(reader ->
+                                    requests.add(new CsvRequest(lap, reader))
+                            )
+                    );
+                    ObjectMapper mapper = new ObjectMapper();
+                    String requestsJson = mapper.writeValueAsString(requests);
+
+                    RequestBody fileBody = RequestBody.create(csvFile, MediaType.parse("text/csv"));
+                    MultipartBody requestBody = new MultipartBody.Builder()
+                            .setType(MultipartBody.FORM)
+                            .addFormDataPart("file", csvFile.getName(),
+                                    RequestBody.create(csvFile, MediaType.parse("text/csv"))
+                            )
+                            .addFormDataPart("marathon", marathonName)
+                            .addFormDataPart("requests", null,
+                                    RequestBody.create(requestsJson, MediaType.parse("application/json"))
+                            )
+                            .build();
+
+                    String uploadUrl = "http://localhost:8083/api/rfid/file-upload?marathon="
+                            + marathonName;
+
+                    Request uploadRequest = new Request.Builder()
+                            .url(uploadUrl)
+                            .post(requestBody)
+                            .build();
+
+                    // ✅ 2. Call /file-upload
+                    try (Response uploadResponse = client.newCall(uploadRequest).execute()) {
+                        if (!uploadResponse.isSuccessful() || uploadResponse.body() == null) {
+                            String body = uploadResponse.body() != null ? uploadResponse.body().string() : "";
+                            String errMsg = parseErrorMessage(body, "Upload failed");
+                            updateErrorUI(errMsg);
+                            return null;
+                        }
+
+                        String parsedRequestBody = uploadResponse.body().string();
+                        util.addLog("Upload success, got parsed body: " + parsedRequestBody);
+
+                        SyncDataRequest fullRequest = mapper.readValue(parsedRequestBody, SyncDataRequest.class);
+
+                        // ✅ 3. Now send parsedRequestBody to /sync
+                        Request syncRequest = new Request.Builder()
+                                .url("http://localhost:8083/api/rfid/sync")
+                                .header("Content-Type", "application/json")
+                                .post(RequestBody.create(parsedRequestBody, MediaType.parse("application/json")))
+                                .build();
+
+                        try (Response syncResponse = client.newCall(syncRequest).execute()) {
+                            if (syncResponse.isSuccessful()) {
+                                String syncBody = syncResponse.body() != null ? syncResponse.body().string() : "";
+                                List<String> allSyncedIps = lapInMap.values().stream()
+                                        .flatMap(List::stream)
+                                        .distinct()
+                                        .collect(Collectors.toList());
+                                storage.deleteByReaderIps(allSyncedIps);
+
                                 SwingUtilities.invokeLater(() -> {
                                     marathonPanel.getSyncStatusLabel().setText("✅ CSV uploaded & synced!");
                                     marathonPanel.getSyncStatusLabel().setForeground(new Color(34, 197, 94));
@@ -207,7 +430,6 @@ public class SyncDataService implements SyncHandler {
             if (userSelection == JFileChooser.APPROVE_OPTION) {
                 File fileToSave = fileChooser.getSelectedFile();
 
-                // 3. Write CSV file to disk
                 try (PrintWriter writer = new PrintWriter(new FileWriter(fileToSave))) {
                     writer.println("tagId,antenna,firstSeen,lastSeen");
                     // Data rows
@@ -234,9 +456,9 @@ public class SyncDataService implements SyncHandler {
     }
 
     @Override
-    public void fetchUnsyncedIpTags() {
-        List<TagDetail> tags = storage.findReaderIp();
-
+    public List<TagDetail> fetchUnsyncedIpTags() {
+        List<TagDetail> tags = storage.fetchUnsyncedIpTags();
+        return tags;
     }
 
     private void updateErrorUI(String message) {
@@ -263,28 +485,36 @@ public class SyncDataService implements SyncHandler {
         }
     }
 
-    private String buildSyncRequestJson(String marathonName, int lapNumber, List<TagDetail> tags) throws Exception {
+    private String buildSyncRequestJson(String marathonName, Map<Integer, List<TagDetail>> lapToTagsMap) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        // Marathon info
-        ObjectNode marathonNode = mapper.createObjectNode();
-        marathonNode.put("name", marathonName);
-        marathonNode.put("lap", lapNumber);
-        // Tags array
-        ArrayNode tagsArray = mapper.createArrayNode();
-        for (TagDetail t : tags) {
-            ObjectNode tagNode = mapper.createObjectNode();
-            tagNode.put("tagId", t.getTagId());
-            tagNode.put("antenna", t.getAntenna());
-            tagNode.put("lastSeen", t.getLastSeen().toString());
-            tagNode.put("firstSeen", t.getFirstSeen().toString());
-            tagsArray.add(tagNode);
-        }
 
-        // Root JSON
         ObjectNode root = mapper.createObjectNode();
-        root.set("marathon", marathonNode);
-        root.set("tags", tagsArray);
+        root.put("marathon", marathonName);
 
+        ArrayNode lapsArray = mapper.createArrayNode();
+
+        for (Map.Entry<Integer, List<TagDetail>> entry : lapToTagsMap.entrySet()) {
+            int lapNumber = entry.getKey();
+            List<TagDetail> tags = entry.getValue();
+
+            ObjectNode lapNode = mapper.createObjectNode();
+            lapNode.put("lapNumber", lapNumber);
+
+            ArrayNode tagsArray = mapper.createArrayNode();
+            for (TagDetail tag : tags) {
+                ObjectNode tagNode = mapper.createObjectNode();
+                tagNode.put("tagId", tag.getTagId());
+                tagNode.put("antenna", tag.getAntenna());
+                tagNode.put("firstSeen", tag.getFirstSeen().toString());
+                tagNode.put("lastSeen", tag.getLastSeen().toString());
+                tagsArray.add(tagNode);
+            }
+
+            lapNode.set("tags", tagsArray);
+            lapsArray.add(lapNode);
+        }
+        root.set("laps", lapsArray);
         return mapper.writeValueAsString(root);
     }
+
 }

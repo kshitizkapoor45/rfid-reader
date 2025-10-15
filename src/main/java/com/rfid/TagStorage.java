@@ -8,5 +8,7 @@ public interface TagStorage {
     void save(TagDetail tag);
     List<TagDetail> findAll();
     void deleteAll();
-    List<TagDetail> findReaderIp();
+    List<TagDetail> fetchUnsyncedIpTags();
+    List<TagDetail> findTagDetailsByIp(String ip);
+    void deleteByReaderIps(List<String> readerIps);
 }

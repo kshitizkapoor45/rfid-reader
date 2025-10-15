@@ -5,6 +5,7 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class TagStorageService implements TagStorage {
     private final String jdbcUrl;
@@ -126,8 +127,52 @@ public class TagStorageService implements TagStorage {
     }
 
     @Override
-    public List<TagDetail> findReaderIp() {
-        String sql = "SELECT reader_ip FROM tag_details WHERE status = 'NOT_SYNCED'";
+    public void deleteByReaderIps(List<String> readerIps) {
+        if (readerIps == null || readerIps.isEmpty()) {
+            return;
+        }
+        String placeholders = readerIps.stream()
+                .map(ip -> "?")
+                .collect(Collectors.joining(", "));
+
+        String sql = "DELETE FROM tag_details WHERE reader_ip IN (" + placeholders + ")";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            for (int i = 0; i < readerIps.size(); i++) {
+                ps.setString(i + 1, readerIps.get(i));
+            }
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public List<TagDetail> fetchUnsyncedIpTags() {
+        String sql = "SELECT DISTINCT reader_ip FROM tag_details'";
+        List<TagDetail> tagDetails = new ArrayList<>();
+
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                TagDetail tagDetail = new TagDetail();
+                tagDetail.setReader(rs.getString("reader_ip"));
+                tagDetails.add(tagDetail);
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+
+        return tagDetails;
+    }
+
+    @Override
+    public List<TagDetail> findTagDetailsByIp(String ip) {
+        String sql = "SELECT tag_id, antenna, first_seen, last_seen, reader_ip FROM tag_details WHERE reader_ip = ?";
         List<TagDetail> tagDetails = new ArrayList<>();
 
         try (Connection con = getConnection();
@@ -147,6 +192,7 @@ public class TagStorageService implements TagStorage {
                         System.err.println("Unknown status: " + statusStr);
                     }
                 }
+
                 Timestamp firstSeenTs = rs.getTimestamp("first_seen");
                 if (firstSeenTs != null) {
                     tagDetail.setFirstSeen(firstSeenTs.toInstant());
