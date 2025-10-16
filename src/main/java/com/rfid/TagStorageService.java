@@ -90,14 +90,6 @@ public class TagStorageService implements TagStorage {
                 tagDetail.setTagId(rs.getString("tag_id"));
                 tagDetail.setAntenna(rs.getInt("antenna"));
                 tagDetail.setReader(rs.getString("reader_ip"));
-                String statusStr = rs.getString("status");
-                if (statusStr != null) {
-                    try {
-                        tagDetail.setStatus(TagStatus.valueOf(statusStr));
-                    } catch (IllegalArgumentException ex) {
-                        System.err.println("Unknown status: " + statusStr);
-                    }
-                }
 
                 Timestamp firstSeenTs = rs.getTimestamp("first_seen");
                 if (firstSeenTs != null) {
@@ -151,7 +143,7 @@ public class TagStorageService implements TagStorage {
 
     @Override
     public List<TagDetail> fetchUnsyncedIpTags() {
-        String sql = "SELECT DISTINCT reader_ip FROM tag_details'";
+        String sql = "SELECT DISTINCT reader_ip FROM tag_details";
         List<TagDetail> tagDetails = new ArrayList<>();
 
         try (Connection con = getConnection();
@@ -172,39 +164,41 @@ public class TagStorageService implements TagStorage {
 
     @Override
     public List<TagDetail> findTagDetailsByIp(String ip) {
-        String sql = "SELECT tag_id, antenna, first_seen, last_seen, reader_ip FROM tag_details WHERE reader_ip = ?";
+        String sql = "SELECT tag_id, antenna, first_seen, last_seen, reader_ip, status FROM tag_details WHERE reader_ip = ?";
         List<TagDetail> tagDetails = new ArrayList<>();
 
         try (Connection con = getConnection();
-             PreparedStatement ps = con.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+             PreparedStatement ps = con.prepareStatement(sql)) {
 
-            while (rs.next()) {
-                TagDetail tagDetail = new TagDetail();
-                tagDetail.setTagId(rs.getString("tag_id"));
-                tagDetail.setAntenna(rs.getInt("antenna"));
-                tagDetail.setReader(rs.getString("reader_ip"));
-                String statusStr = rs.getString("status");
-                if (statusStr != null) {
-                    try {
-                        tagDetail.setStatus(TagStatus.valueOf(statusStr));
-                    } catch (IllegalArgumentException ex) {
-                        System.err.println("Unknown status: " + statusStr);
+            ps.setString(1, ip); // set parameter
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    TagDetail tagDetail = new TagDetail();
+                    tagDetail.setTagId(rs.getString("tag_id"));
+                    tagDetail.setAntenna(rs.getInt("antenna"));
+                    tagDetail.setReader(rs.getString("reader_ip"));
+
+                    String statusStr = rs.getString("status");
+                    if (statusStr != null) {
+                        try {
+                            tagDetail.setStatus(TagStatus.valueOf(statusStr));
+                        } catch (IllegalArgumentException ex) {
+                            System.err.println("Unknown status: " + statusStr);
+                        }
                     }
+                    Timestamp firstSeenTs = rs.getTimestamp("first_seen");
+                    if (firstSeenTs != null) {
+                        tagDetail.setFirstSeen(firstSeenTs.toInstant());
+                    }
+                    Timestamp lastSeenTs = rs.getTimestamp("last_seen");
+                    if (lastSeenTs != null) {
+                        tagDetail.setLastSeen(lastSeenTs.toInstant());
+                    }
+                    tagDetails.add(tagDetail);
                 }
-
-                Timestamp firstSeenTs = rs.getTimestamp("first_seen");
-                if (firstSeenTs != null) {
-                    tagDetail.setFirstSeen(firstSeenTs.toInstant());
-                }
-                Timestamp lastSeenTs = rs.getTimestamp("last_seen");
-                if (lastSeenTs != null) {
-                    tagDetail.setLastSeen(lastSeenTs.toInstant());
-                }
-                tagDetails.add(tagDetail);
             }
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            System.err.println("SQL Error: " + e.getMessage());
         }
         return tagDetails;
     }

@@ -45,8 +45,17 @@ public class RFIDMarathonApp extends JFrame {
         setLocationRelativeTo(null);
 
         JTabbedPane tabbedPane = new JTabbedPane();
-        tabbedPane.addTab("RFID Reader", rfidPanel.createRFIDPanel());
-        tabbedPane.addTab("Marathon Setup", marathonPanel.createMarathonPanel());
+        JPanel rfidPanelContent = rfidPanel.createRFIDPanel();
+        JPanel marathonPanelContent = marathonPanel.createMarathonPanel();
+
+        tabbedPane.addTab("RFID Reader", rfidPanelContent);
+        tabbedPane.addTab("Marathon Setup", marathonPanelContent);
+
+        tabbedPane.addChangeListener(e -> {
+            if (tabbedPane.getSelectedComponent() == marathonPanelContent) {
+                SwingUtilities.invokeLater(() -> marathonPanel.loadUnsyncedIpTags());
+            }
+        });
 
         add(tabbedPane, BorderLayout.CENTER);
         add(createStatusBar(), BorderLayout.SOUTH);

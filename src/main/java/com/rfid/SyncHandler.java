@@ -6,11 +6,11 @@ import java.util.Map;
 
 public interface SyncHandler {
     void normalSyncFromDatabase(Map<Integer,List<String>> lapInMap);
-    void uploadCsv(File csvFile,Map<Integer,List<String>> lapInMap);
+    void uploadCsv(File csvFile,Map<Integer,List<String>> lapInMap,boolean merge);
     void downloadReport();
     List<TagDetail> fetchUnsyncedIpTags();
     void mergeSyncFromDatabase(Map<Integer, List<String>> lapIpMap);
-    void mergeUploadCsv(File selectedFile, Map<Integer, List<String>> tagIpMap);
+    void mergeUploadCsv(File selectedFile, Map<Integer, List<String>> tagIpMap,boolean merge);
 
 //    void mergeSyncFromDatabase(Map<Integer, List<String>> lapIpMap);
 //    void syncSelectedTags(SyncTagDto tagDto, boolean flush);

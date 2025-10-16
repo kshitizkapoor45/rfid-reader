@@ -224,7 +224,8 @@ public class SyncDataService implements SyncHandler {
     }
 
     @Override
-    public void uploadCsv(File csvFile,Map<Integer,List<String>> lapInMap) {
+    public void uploadCsv(File csvFile,Map<Integer,List<String>> lapInMap,boolean merge) {
+        System.out.println("Uploading csv and syncing data initiated");
         marathonPanel.getSyncStatusLabel().setText("📤 Uploading CSV...");
         marathonPanel.getSyncStatusLabel().setForeground(new Color(59, 130, 246));
 
@@ -247,16 +248,13 @@ public class SyncDataService implements SyncHandler {
                     MultipartBody requestBody = new MultipartBody.Builder()
                             .setType(MultipartBody.FORM)
                             .addFormDataPart("file", csvFile.getName(),
-                                    RequestBody.create(csvFile, MediaType.parse("text/csv"))
-                            )
+                                    RequestBody.create(csvFile, MediaType.parse("text/csv")))
                             .addFormDataPart("marathon", marathonName)
-                            .addFormDataPart("requests", null,
-                                    RequestBody.create(requestsJson, MediaType.parse("application/json"))
-                            )
+                            .addFormDataPart("requests", requestsJson)
+                            .addFormDataPart("merge", String.valueOf(merge))
                             .build();
 
-                    String uploadUrl = "http://localhost:8083/api/rfid/file-upload?marathon="
-                            + marathonName;
+                    String uploadUrl = "http://localhost:8083/api/rfid/file-upload";
 
                     Request uploadRequest = new Request.Builder()
                             .url(uploadUrl)
@@ -314,7 +312,8 @@ public class SyncDataService implements SyncHandler {
     }
 
     @Override
-    public void mergeUploadCsv(File csvFile, Map<Integer, List<String>> lapInMap) {
+    public void mergeUploadCsv(File csvFile, Map<Integer, List<String>> lapInMap, boolean merge) {
+        System.out.println("Uploading CSV and merging data initiated");
         marathonPanel.getSyncStatusLabel().setText("📤 Uploading CSV...");
         marathonPanel.getSyncStatusLabel().setForeground(new Color(59, 130, 246));
 
@@ -324,6 +323,7 @@ public class SyncDataService implements SyncHandler {
                 try {
                     String marathonName = marathonPanel.getMarathonNameField().getText().trim();
 
+                    // Build requests JSON
                     List<CsvRequest> requests = new ArrayList<>();
                     lapInMap.forEach((lap, readers) ->
                             readers.forEach(reader ->
@@ -333,27 +333,24 @@ public class SyncDataService implements SyncHandler {
                     ObjectMapper mapper = new ObjectMapper();
                     String requestsJson = mapper.writeValueAsString(requests);
 
-                    RequestBody fileBody = RequestBody.create(csvFile, MediaType.parse("text/csv"));
+                    // ✅ Build multipart form data properly
                     MultipartBody requestBody = new MultipartBody.Builder()
                             .setType(MultipartBody.FORM)
                             .addFormDataPart("file", csvFile.getName(),
-                                    RequestBody.create(csvFile, MediaType.parse("text/csv"))
-                            )
+                                    RequestBody.create(csvFile, MediaType.parse("text/csv")))
                             .addFormDataPart("marathon", marathonName)
-                            .addFormDataPart("requests", null,
-                                    RequestBody.create(requestsJson, MediaType.parse("application/json"))
-                            )
+                            .addFormDataPart("requests", requestsJson)
+                            .addFormDataPart("merge", String.valueOf(merge))
                             .build();
 
-                    String uploadUrl = "http://localhost:8083/api/rfid/file-upload?marathon="
-                            + marathonName;
+                    String uploadUrl = "http://localhost:8083/api/rfid/file-upload";
 
                     Request uploadRequest = new Request.Builder()
                             .url(uploadUrl)
                             .post(requestBody)
                             .build();
 
-                    // ✅ 2. Call /file-upload
+                    // Call /file-upload
                     try (Response uploadResponse = client.newCall(uploadRequest).execute()) {
                         if (!uploadResponse.isSuccessful() || uploadResponse.body() == null) {
                             String body = uploadResponse.body() != null ? uploadResponse.body().string() : "";
@@ -367,7 +364,7 @@ public class SyncDataService implements SyncHandler {
 
                         SyncDataRequest fullRequest = mapper.readValue(parsedRequestBody, SyncDataRequest.class);
 
-                        // ✅ 3. Now send parsedRequestBody to /sync
+                        // Call /sync
                         Request syncRequest = new Request.Builder()
                                 .url("http://localhost:8083/api/rfid/sync")
                                 .header("Content-Type", "application/json")
@@ -396,7 +393,6 @@ public class SyncDataService implements SyncHandler {
                         }
                     }
                 } catch (Exception ex) {
-                    // 🟢 Only handle truly unexpected errors here
                     updateErrorUI("Unexpected error: " + ex.getMessage());
                     ex.printStackTrace();
                 }
@@ -431,14 +427,15 @@ public class SyncDataService implements SyncHandler {
                 File fileToSave = fileChooser.getSelectedFile();
 
                 try (PrintWriter writer = new PrintWriter(new FileWriter(fileToSave))) {
-                    writer.println("tagId,antenna,firstSeen,lastSeen");
+                    writer.println("tagId,antenna,firstSeen,lastSeen,readerIp");
                     // Data rows
                     for (TagDetail tag : tags) {
-                        writer.printf("%s,%d,%s,%s%n",
+                        writer.printf("%s,%d,%s,%s,%s%n",
                                 tag.getTagId(),
                                 tag.getAntenna(),
                                 tag.getFirstSeen() != null ? tag.getFirstSeen().toString() : "",
-                                tag.getLastSeen() != null ? tag.getLastSeen().toString() : "");
+                                tag.getLastSeen() != null ? tag.getLastSeen().toString() : "",
+                                tag.getReader());
                     }
                 }
                 JOptionPane.showMessageDialog(null,

@@ -54,7 +54,8 @@ public class MarathonPanel {
         return mainPanel;
     }
 
-    private void loadUnsyncedIpTags() {
+    public void loadUnsyncedIpTags() {
+        System.out.println("Fetching unsynced IP tags");
         List<TagDetail> tags = syncHandler.fetchUnsyncedIpTags();
         ipTagsPanel.removeAll();
 
@@ -63,6 +64,7 @@ public class MarathonPanel {
             emptyLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
             emptyLabel.setForeground(new Color(107, 114, 128));
             emptyLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
             ipTagsPanel.add(Box.createVerticalGlue());
             ipTagsPanel.add(emptyLabel);
             ipTagsPanel.add(Box.createVerticalGlue());
@@ -78,16 +80,30 @@ public class MarathonPanel {
                 ipCheck.setFont(new Font("Segoe UI", Font.PLAIN, 13));
                 ipCheck.setSelected(true);
 
-                // Lap Spinner with no default value
-                JSpinner lapSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 100, 1));
+                // Spinner setup
+                JSpinner lapSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
                 lapSpinner.setPreferredSize(new Dimension(70, 24));
 
-                // Center the number inside spinner
                 JFormattedTextField spinnerTextField =
                         ((JSpinner.DefaultEditor) lapSpinner.getEditor()).getTextField();
                 spinnerTextField.setHorizontalAlignment(JTextField.CENTER);
                 spinnerTextField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
                 spinnerTextField.setText(""); // visually empty
+
+                // Track spinner changes
+                spinnerTextField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+                    public void changedUpdate(javax.swing.event.DocumentEvent e) {
+                        updateSyncButton();
+                    }
+
+                    public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                        updateSyncButton();
+                    }
+
+                    public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                        updateSyncButton();
+                    }
+                });
 
                 row.add(ipCheck);
                 row.add(Box.createHorizontalStrut(15));
@@ -100,22 +116,20 @@ public class MarathonPanel {
             ipTagsPanel.add(Box.createVerticalStrut(15));
         }
 
-        // Flush checkbox centered
-        JPanel flushPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        flushPanel.setBackground(Color.WHITE);
-        flushPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
-
-        JCheckBox flushCheckBox = new JCheckBox("Flush data after sync");
-        flushCheckBox.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        flushCheckBox.setForeground(new Color(51, 65, 85));
-
-        flushPanel.add(flushCheckBox);
-        ipTagsPanel.add(flushPanel);
+//        JPanel flushPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+//        flushPanel.setBackground(Color.WHITE);
+//        flushPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
+//
+//        JCheckBox flushCheckBox = new JCheckBox("Flush data after sync");
+//        flushCheckBox.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+//        flushCheckBox.setForeground(new Color(51, 65, 85));
+//
+//        flushPanel.add(flushCheckBox);
+//        ipTagsPanel.add(flushPanel);
 
         ipTagsPanel.revalidate();
         ipTagsPanel.repaint();
 
-        // Initial friendly hint
         syncStatusLabel.setText("Please assign lap numbers to selected IPs");
         syncStatusLabel.setForeground(new Color(107, 114, 128));
     }
@@ -428,6 +442,10 @@ public class MarathonPanel {
         return buttonPanel;
     }
 
+    public void refreshIpTagsPanel() {
+        SwingUtilities.invokeLater(() -> loadUnsyncedIpTags());
+    }
+
     private void showSyncModal(boolean merge, Map<Integer, List<String>> lapIpMap) {
         JDialog syncDialog = new JDialog((JFrame) SwingUtilities.getWindowAncestor(mainPanel),
                 merge ? "Merge Options" : "Sync Options", true);
@@ -462,22 +480,20 @@ public class MarathonPanel {
             } else {
                 syncHandler.normalSyncFromDatabase(lapIpMap);
             }
+            refreshIpTagsPanel();
             syncDialog.dispose();
         });
 
         JButton fileUploadButton = createModalButton(
-                merge ? "Merge via CSV/Excel Upload" : "Upload CSV/Excel File",
+                merge ? "Merge via CSV Upload" : "Upload CSV File",
                 merge ? "Merge overlapping data from uploaded file"
-                        : "Import marathon data from CSV or Excel file",
+                        : "Import marathon data from CSV file",
                 new Color(16, 185, 129)
         );
 
         fileUploadButton.addActionListener(e -> {
-            if (merge) {
-                uploadCsv(lapIpMap,true);
-            } else {
-                uploadCsv(lapIpMap,false);
-            }
+            uploadCsv(lapIpMap,merge);
+            refreshIpTagsPanel();
             syncDialog.dispose();
         });
 
@@ -551,18 +567,18 @@ public class MarathonPanel {
 
     private void uploadCsv(Map<Integer,List<String>> tagIpMap,boolean merge) {
         JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setDialogTitle("Select CSV or Excel File");
+        fileChooser.setDialogTitle("Select CSV File");
         FileNameExtensionFilter filter = new FileNameExtensionFilter(
-                "CSV & Excel Files", "csv", "xlsx", "xls");
+                "CSV File", "csv");
         fileChooser.setFileFilter(filter);
 
         int result = fileChooser.showOpenDialog(mainPanel);
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFile = fileChooser.getSelectedFile();
             if(merge){
-                syncHandler.uploadCsv(selectedFile,tagIpMap);
+                syncHandler.mergeUploadCsv(selectedFile,tagIpMap,true);
             }else{
-                syncHandler.mergeUploadCsv(selectedFile,tagIpMap);
+                syncHandler.uploadCsv(selectedFile,tagIpMap,false);
             }
         }
     }
@@ -586,7 +602,7 @@ public class MarathonPanel {
         JTextArea instructionsText = new JTextArea(
                 "• Enter marathon name\n" +
                         "• Review and select IP tags to sync\n" +
-                        "• Click 'Sync Data' to upload data from database or import CSV/Excel files"
+                        "• Click 'Sync Data' to upload data from database or import CSV files"
         );
         instructionsText.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         instructionsText.setForeground(new Color(30, 58, 138));
@@ -602,19 +618,43 @@ public class MarathonPanel {
     }
 
     private void updateSyncButton() {
-        boolean enableSync = !marathonNameField.getText().trim().isEmpty();
-        syncButton.setEnabled(enableSync);
+        boolean marathonFilled = marathonNameField.getText() != null && !marathonNameField.getText().trim().isEmpty();
 
-        if (enableSync) {
+        boolean allLapsFilled = true;
+        for (Component comp : ipTagsPanel.getComponents()) {
+            if (comp instanceof JPanel row) {
+                for (Component inner : row.getComponents()) {
+                    if (inner instanceof JSpinner spinner) {
+                        JFormattedTextField textField = ((JSpinner.DefaultEditor) spinner.getEditor()).getTextField();
+                        String text = textField.getText().trim();
+                        if (text.isEmpty()) {
+                            allLapsFilled = false;
+                            break;
+                        }
+                        try {
+                            int val = Integer.parseInt(text);
+                            if (val < 1) allLapsFilled = false;
+                        } catch (NumberFormatException e) {
+                            allLapsFilled = false;
+                        }
+                    }
+                }
+            }
+        }
+        boolean enableButton = marathonFilled && allLapsFilled;
+        syncButton.setEnabled(enableButton);
+
+        if (enableButton) {
             syncButton.setBackground(new Color(34, 197, 94));
             syncStatusLabel.setText("Ready to sync marathon data");
             syncStatusLabel.setForeground(new Color(61, 189, 64));
         } else {
             syncButton.setBackground(new Color(215, 221, 228));
-            syncStatusLabel.setText("Please enter marathon name to enable sync");
+            syncStatusLabel.setText("Please enter marathon name and assign laps to enable sync");
             syncStatusLabel.setForeground(new Color(218, 59, 59));
         }
     }
+
     public JPanel getMainPanel() {
         return mainPanel;
     }

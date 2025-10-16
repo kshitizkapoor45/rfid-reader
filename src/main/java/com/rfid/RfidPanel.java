@@ -42,7 +42,11 @@ public class RfidPanel {
         mainPanel = new JPanel(new BorderLayout(15, 15));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        // 🔹 Top panel with left and right sections
+        JPanel topPanel = new JPanel(new BorderLayout(10, 5));
+
+        // Left buttons: Add, Start All, Stop All
+        JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         addReaderButton = new JButton("+ Add Reader");
         startAllButton = new JButton("Start All");
         stopAllButton = new JButton("Stop All");
@@ -50,9 +54,21 @@ public class RfidPanel {
         startAllButton.setEnabled(false);
         stopAllButton.setEnabled(false);
 
-        topPanel.add(addReaderButton);
-        topPanel.add(startAllButton);
-        topPanel.add(stopAllButton);
+        leftButtons.add(addReaderButton);
+        leftButtons.add(startAllButton);
+        leftButtons.add(stopAllButton);
+
+        // Right button: Report
+        JButton reportButton = new JButton("Report");
+        reportButton.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        reportButton.setBackground(new Color(59, 96, 246));
+        reportButton.setForeground(Color.WHITE);
+        reportButton.setFocusPainted(false);
+        reportButton.addActionListener(e -> downloadTagsReport());
+
+        topPanel.add(leftButtons, BorderLayout.WEST);
+        topPanel.add(reportButton, BorderLayout.EAST);
+
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
         // 🔹 Readers container with NO vertical gaps
@@ -79,6 +95,10 @@ public class RfidPanel {
         stopAllButton.addActionListener(e -> stopAllReaders());
 
         return mainPanel;
+    }
+
+    private void downloadTagsReport(){
+        syncHandler.downloadReport();
     }
 
     private void addNewReader() {
@@ -114,10 +134,6 @@ public class RfidPanel {
 
         readerCards.add(card);
         readersPanel.add(wrapper);
-
-//        JSeparator separator = new JSeparator();
-//        separator.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
-//        readersPanel.add(separator);
 
         readersPanel.revalidate();
         readersPanel.repaint();
