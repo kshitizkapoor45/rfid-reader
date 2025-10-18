@@ -1,12 +1,13 @@
 package com.rfid;
 
 import javax.swing.*;
-import javax.swing.border.TitledBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class MarathonPanel {
 
@@ -16,6 +17,7 @@ public class MarathonPanel {
     private JButton syncButton;
     private JLabel syncStatusLabel;
     private SyncHandler syncHandler;
+    private JPanel ipTagsPanel;
 
     public MarathonPanel(SyncHandler syncHandler){
         this.syncHandler = syncHandler;
@@ -23,6 +25,7 @@ public class MarathonPanel {
     public MarathonPanel() {
         this(null);
     }
+
     public void setSyncHandler(SyncHandler syncHandler) {
         this.syncHandler = syncHandler;
     }
@@ -40,12 +43,210 @@ public class MarathonPanel {
         JPanel formPanel = createFormPanel();
         mainPanel.add(formPanel, BorderLayout.CENTER);
 
+        if (syncHandler != null) {
+            loadUnsyncedIpTags();
+        }
+
         // Create instructions panel
         JPanel instructionsPanel = createInstructionsPanel();
         mainPanel.add(instructionsPanel, BorderLayout.SOUTH);
 
         return mainPanel;
     }
+
+    public void loadUnsyncedIpTags() {
+        System.out.println("Fetching unsynced IP tags");
+        List<TagDetail> tags = syncHandler.fetchUnsyncedIpTags();
+        ipTagsPanel.removeAll();
+
+        if (tags == null || tags.isEmpty()) {
+            JLabel emptyLabel = new JLabel("No tags found in database", JLabel.CENTER);
+            emptyLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+            emptyLabel.setForeground(new Color(107, 114, 128));
+            emptyLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+            ipTagsPanel.add(Box.createVerticalGlue());
+            ipTagsPanel.add(emptyLabel);
+            ipTagsPanel.add(Box.createVerticalGlue());
+        } else {
+            ipTagsPanel.add(Box.createVerticalStrut(5));
+
+            for (TagDetail tag : tags) {
+                JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 5));
+                row.setBackground(Color.WHITE);
+                row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+
+                JCheckBox ipCheck = new JCheckBox(tag.getReader());
+                ipCheck.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+                ipCheck.setSelected(true);
+
+                // Spinner setup
+                JSpinner lapSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
+                lapSpinner.setPreferredSize(new Dimension(70, 24));
+
+                JFormattedTextField spinnerTextField =
+                        ((JSpinner.DefaultEditor) lapSpinner.getEditor()).getTextField();
+                spinnerTextField.setHorizontalAlignment(JTextField.CENTER);
+                spinnerTextField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+                spinnerTextField.setText(""); // visually empty
+
+                // Track spinner changes
+                spinnerTextField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+                    public void changedUpdate(javax.swing.event.DocumentEvent e) {
+                        updateSyncButton();
+                    }
+
+                    public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                        updateSyncButton();
+                    }
+
+                    public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                        updateSyncButton();
+                    }
+                });
+
+                row.add(ipCheck);
+                row.add(Box.createHorizontalStrut(15));
+                row.add(new JLabel("Lap:"));
+                row.add(lapSpinner);
+
+                ipTagsPanel.add(row);
+            }
+
+            ipTagsPanel.add(Box.createVerticalStrut(15));
+        }
+
+//        JPanel flushPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+//        flushPanel.setBackground(Color.WHITE);
+//        flushPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
+//
+//        JCheckBox flushCheckBox = new JCheckBox("Flush data after sync");
+//        flushCheckBox.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+//        flushCheckBox.setForeground(new Color(51, 65, 85));
+//
+//        flushPanel.add(flushCheckBox);
+//        ipTagsPanel.add(flushPanel);
+
+        ipTagsPanel.revalidate();
+        ipTagsPanel.repaint();
+
+        syncStatusLabel.setText("Please assign lap numbers to selected IPs");
+        syncStatusLabel.setForeground(new Color(107, 114, 128));
+    }
+
+    private boolean checkDuplicateLaps() {
+        Map<Integer, List<String>> lapToIPs = new HashMap<>();
+        boolean allAssigned = true;
+        boolean hasDuplicates = false;
+
+        // Collect lap numbers for selected IPs
+        for (Component comp : ipTagsPanel.getComponents()) {
+            if (comp instanceof JPanel) {
+                JPanel row = (JPanel) comp;
+                JCheckBox ipCheck = null;
+                JSpinner lapSpinner = null;
+
+                for (Component rowComp : row.getComponents()) {
+                    if (rowComp instanceof JCheckBox) {
+                        ipCheck = (JCheckBox) rowComp;
+                    } else if (rowComp instanceof JSpinner) {
+                        lapSpinner = (JSpinner) rowComp;
+                    }
+                }
+
+                if (ipCheck != null && lapSpinner != null && ipCheck.isSelected()) {
+                    int lapNumber = (Integer) lapSpinner.getValue();
+                    if (lapNumber > 0) {
+                        lapToIPs.computeIfAbsent(lapNumber, k -> new ArrayList<>())
+                                .add(ipCheck.getText());
+                    } else {
+                        allAssigned = false;
+                    }
+                }
+            }
+        }
+
+        // ✅ Check for duplicates first
+        for (Map.Entry<Integer, List<String>> entry : lapToIPs.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                hasDuplicates = true;
+                showMergeConfirmationDialog(entry.getKey(), entry.getValue());
+                break; // stop at first duplicate found
+            }
+        }
+        if (hasDuplicates) {
+            System.out.println("Contatins duplicate lap numbers");
+        } else if (!allAssigned) {
+            syncStatusLabel.setText("Please assign lap numbers to all selected IPs");
+            syncStatusLabel.setForeground(new Color(107, 114, 128)); // gray
+        } else {
+            syncStatusLabel.setText("All lap numbers look good!");
+            syncStatusLabel.setForeground(new Color(34, 197, 94)); // green
+        }
+        return hasDuplicates;
+    }
+
+    private Map<Integer, List<String>> getSelectedLapIpMap() {
+        Map<Integer, List<String>> lapToIPs = new HashMap<>();
+
+        for (Component comp : ipTagsPanel.getComponents()) {
+            if (comp instanceof JPanel) {
+                JPanel row = (JPanel) comp;
+                JCheckBox ipCheck = null;
+                JSpinner lapSpinner = null;
+
+                for (Component rowComp : row.getComponents()) {
+                    if (rowComp instanceof JCheckBox) {
+                        ipCheck = (JCheckBox) rowComp;
+                    } else if (rowComp instanceof JSpinner) {
+                        lapSpinner = (JSpinner) rowComp;
+                    }
+                }
+
+                if (ipCheck != null && lapSpinner != null && ipCheck.isSelected()) {
+                    int lapNumber = (Integer) lapSpinner.getValue();
+                    if (lapNumber > 0) {
+                        lapToIPs.computeIfAbsent(lapNumber, k -> new ArrayList<>())
+                                .add(ipCheck.getText());
+                    }
+                }
+            }
+        }
+        return lapToIPs;
+    }
+
+
+    private void showMergeConfirmationDialog(int lapNumber, List<String> ipAddresses) {
+        Map<Integer, List<String>> lapIpMap = getSelectedLapIpMap();
+
+        StringBuilder message = new StringBuilder();
+        message.append("The following IP addresses have the same lap number (")
+                .append(lapNumber).append("):\n\n");
+
+        for (String ip : ipAddresses) {
+            message.append("• ").append(ip).append("\n");
+        }
+
+        message.append("\nDo you want to merge the data from these IP addresses?");
+
+        int result = JOptionPane.showConfirmDialog(
+                mainPanel,
+                message.toString(),
+                "Duplicate Lap Number Detected",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE
+        );
+
+        if (result == JOptionPane.YES_OPTION) {
+            showSyncModal(true, lapIpMap);
+            syncStatusLabel.setText("Data will be merged for lap " + lapNumber);
+            syncStatusLabel.setForeground(new Color(34, 197, 94));
+        } else {
+            syncStatusLabel.setText("Please assign different lap numbers or deselect IPs");
+            syncStatusLabel.setForeground(new Color(239, 68, 68));
+        }
+    }
+
 
     private JPanel createHeaderPanel() {
         JPanel headerPanel = new JPanel(new BorderLayout());
@@ -86,42 +287,88 @@ public class MarathonPanel {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1;
 
-        // Marathon Name Field
+        // 1️⃣ Marathon Name Field
         gbc.gridx = 0; gbc.gridy = 0;
         formPanel.add(createInputPanel("Marathon Name", createMarathonNameField()), gbc);
 
-        // Lap Number Field
+        // 2️⃣ Unsynced IP Tags Panel inside ScrollPane
         gbc.gridy = 1;
-        formPanel.add(createInputPanel("Number of Laps", createLapNumberSpinner()), gbc);
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weighty = 1.0;
 
-        // Sync Button
+        // Create wrapper panel for proper centering
+        JPanel tagsWrapperPanel = new JPanel(new BorderLayout());
+        tagsWrapperPanel.setBackground(Color.WHITE);
+        tagsWrapperPanel.setBorder(BorderFactory.createEmptyBorder(15, 0, 15, 0));
+
+        // Title label
+        JLabel tagsTitle = new JLabel("Unsynced IP Tags", JLabel.CENTER);
+        tagsTitle.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        tagsTitle.setForeground(new Color(51, 65, 85));
+        tagsTitle.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        tagsWrapperPanel.add(tagsTitle, BorderLayout.NORTH);
+
+        ipTagsPanel = new JPanel();
+        ipTagsPanel.setLayout(new BoxLayout(ipTagsPanel, BoxLayout.Y_AXIS));
+        ipTagsPanel.setBackground(Color.WHITE);
+        ipTagsPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JScrollPane scrollPane = new JScrollPane(ipTagsPanel);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(226, 232, 240), 1));
+        scrollPane.setBackground(Color.WHITE);
+        scrollPane.setPreferredSize(new Dimension(500, 200));
+        tagsWrapperPanel.add(scrollPane, BorderLayout.CENTER);
+
+        formPanel.add(tagsWrapperPanel, gbc);
+
+        // 3️⃣ Sync Button Panel (moved after tags)
         gbc.gridy = 2;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weighty = 0;
         formPanel.add(createSyncButtonPanel(), gbc);
 
-        // Status Label (spans horizontally)
+        // 4️⃣ Status Label
         gbc.gridy = 3;
         gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weighty = 0;
         syncStatusLabel = new JLabel("Ready to configure marathon details", JLabel.CENTER);
         syncStatusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         syncStatusLabel.setForeground(new Color(100, 116, 139));
         formPanel.add(syncStatusLabel, gbc);
 
-        containerPanel.add(formPanel, BorderLayout.CENTER); // ✅ stick to left side
+        containerPanel.add(formPanel, BorderLayout.CENTER);
         return containerPanel;
     }
 
     private JTextField createMarathonNameField() {
         marathonNameField = new JTextField();
-        marathonNameField.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        marathonNameField.setPreferredSize(new Dimension(250, 35));
-        marathonNameField.setMinimumSize(new Dimension(200, 30));
-        marathonNameField.setMaximumSize(new Dimension(400, 40));
+        marathonNameField.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        marathonNameField.setPreferredSize(new Dimension(400, 40));
+        marathonNameField.setMinimumSize(new Dimension(300, 40));
+        marathonNameField.setMaximumSize(new Dimension(500, 40));
         marathonNameField.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(203, 213, 225), 1),
-                BorderFactory.createEmptyBorder(4, 8, 4, 8)
+                BorderFactory.createEmptyBorder(8, 12, 8, 12)
         ));
 
-        // ✅ Keep the document listener
+        // Focus effect
+        marathonNameField.addFocusListener(new java.awt.event.FocusAdapter() {
+            public void focusGained(java.awt.event.FocusEvent evt) {
+                marathonNameField.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(new Color(59, 130, 246), 2),
+                        BorderFactory.createEmptyBorder(8, 12, 8, 12)
+                ));
+            }
+
+            public void focusLost(java.awt.event.FocusEvent evt) {
+                marathonNameField.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(new Color(203, 213, 225), 1),
+                        BorderFactory.createEmptyBorder(8, 12, 8, 12)
+                ));
+            }
+        });
+
+        // Keep the document listener
         marathonNameField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void changedUpdate(javax.swing.event.DocumentEvent e) { updateSyncButton(); }
             public void removeUpdate(javax.swing.event.DocumentEvent e) { updateSyncButton(); }
@@ -130,78 +377,6 @@ public class MarathonPanel {
 
         return marathonNameField;
     }
-
-    private JSpinner createLapNumberSpinner() {
-        // Spinner model: minimum 1, max 100, step 1
-        lapNumberSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
-        lapNumberSpinner.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        lapNumberSpinner.setPreferredSize(new Dimension(250, 35));
-        lapNumberSpinner.setMinimumSize(new Dimension(200, 30));
-        lapNumberSpinner.setMaximumSize(new Dimension(400, 40));
-        lapNumberSpinner.setBorder(BorderFactory.createLineBorder(new Color(203, 213, 225), 1));
-        lapNumberSpinner.setBackground(new Color(249, 250, 251));
-
-        JFormattedTextField spinnerTextField =
-                ((JSpinner.DefaultEditor) lapNumberSpinner.getEditor()).getTextField();
-
-        // ✅ Ensure default value is visible
-        spinnerTextField.setText(lapNumberSpinner.getValue().toString());
-
-        // ✅ Allow only integers >= 1
-        spinnerTextField.setInputVerifier(new InputVerifier() {
-            @Override
-            public boolean verify(JComponent input) {
-                String text = ((JTextField) input).getText();
-                try {
-                    int value = Integer.parseInt(text);
-                    return value >= 1;
-                } catch (NumberFormatException e) {
-                    return false;
-                }
-            }
-        });
-
-        // Style the text field
-        spinnerTextField.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
-        spinnerTextField.setBackground(new Color(249, 250, 251));
-        spinnerTextField.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        spinnerTextField.setHorizontalAlignment(JTextField.LEFT);
-
-        // Focus effect
-        spinnerTextField.addFocusListener(new java.awt.event.FocusAdapter() {
-            public void focusGained(java.awt.event.FocusEvent evt) {
-                lapNumberSpinner.setBorder(BorderFactory.createLineBorder(new Color(59, 130, 246), 2));
-                spinnerTextField.setBackground(Color.WHITE);
-            }
-
-            public void focusLost(java.awt.event.FocusEvent evt) {
-                lapNumberSpinner.setBorder(BorderFactory.createLineBorder(new Color(203, 213, 225), 1));
-                spinnerTextField.setBackground(new Color(249, 250, 251));
-
-                // ✅ Reset to minimum if invalid
-                if (!spinnerTextField.getInputVerifier().verify(spinnerTextField)) {
-                    lapNumberSpinner.setValue(1);
-                    spinnerTextField.setText("1");
-                }
-            }
-        });
-
-        // Customize arrow buttons
-        Component[] comps = lapNumberSpinner.getComponents();
-        for (Component comp : comps) {
-            if (comp instanceof JButton) {
-                JButton button = (JButton) comp;
-                button.setBackground(new Color(249, 250, 251));
-                button.setForeground(new Color(59, 130, 246));
-                button.setBorder(BorderFactory.createLineBorder(new Color(203, 213, 225)));
-                button.setFocusPainted(false);
-                button.setFont(new Font("Segoe UI", Font.BOLD, 12));
-            }
-        }
-        return lapNumberSpinner;
-    }
-
-
 
     private JPanel createInputPanel(String labelText, JComponent inputComponent) {
         JPanel panel = new JPanel();
@@ -223,7 +398,7 @@ public class MarathonPanel {
     }
 
     private JPanel createSyncButtonPanel() {
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
         buttonPanel.setBackground(Color.WHITE);
 
         syncButton = new JButton("Sync Marathon Data");
@@ -240,7 +415,7 @@ public class MarathonPanel {
         syncButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
         syncButton.setEnabled(false);
 
-        // Add hover effect
+        // Hover effect
         syncButton.addMouseListener(new java.awt.event.MouseAdapter() {
             public void mouseEntered(java.awt.event.MouseEvent evt) {
                 if (syncButton.isEnabled()) {
@@ -253,49 +428,27 @@ public class MarathonPanel {
                 }
             }
         });
+        // Add action listener
+        syncButton.addActionListener(e -> {
+            Map<Integer, List<String>> lapIpMap = getSelectedLapIpMap();
+            boolean hasDuplicates = checkDuplicateLaps();
 
-        // Add action listener to show modal
-        syncButton.addActionListener(e -> showSyncModal());
+            if (!hasDuplicates) {
+                showSyncModal(false, lapIpMap);
+            }
+        });
 
         buttonPanel.add(syncButton);
         return buttonPanel;
     }
 
-    private JPanel createInstructionsPanel() {
-        JPanel instructionsPanel = new JPanel(new BorderLayout());
-        instructionsPanel.setBackground(new Color(248, 250, 252));
-        instructionsPanel.setBorder(BorderFactory.createEmptyBorder(15, 0, 5, 0));
-
-        JPanel cardPanel = new JPanel(new BorderLayout());
-        cardPanel.setBackground(new Color(239, 246, 255));
-        cardPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(191, 219, 254), 1),
-                BorderFactory.createEmptyBorder(15, 20, 15, 20)
-        ));
-
-        JLabel instructionTitle = new JLabel("💡 Quick Instructions");
-        instructionTitle.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        instructionTitle.setForeground(new Color(30, 64, 175));
-
-        JTextArea instructionsText = new JTextArea(
-                "• Enter marathon name and set number of laps\n" +
-                        "• Use sync button to upload data from database or import CSV/Excel files"
-        );
-        instructionsText.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        instructionsText.setForeground(new Color(30, 58, 138));
-        instructionsText.setBackground(new Color(239, 246, 255));
-        instructionsText.setEditable(false);
-        instructionsText.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
-
-        cardPanel.add(instructionTitle, BorderLayout.NORTH);
-        cardPanel.add(instructionsText, BorderLayout.CENTER);
-
-        instructionsPanel.add(cardPanel, BorderLayout.CENTER);
-        return instructionsPanel;
+    public void refreshIpTagsPanel() {
+        SwingUtilities.invokeLater(() -> loadUnsyncedIpTags());
     }
 
-    private void showSyncModal() {
-        JDialog syncDialog = new JDialog((JFrame) SwingUtilities.getWindowAncestor(mainPanel), "Sync Options", true);
+    private void showSyncModal(boolean merge, Map<Integer, List<String>> lapIpMap) {
+        JDialog syncDialog = new JDialog((JFrame) SwingUtilities.getWindowAncestor(mainPanel),
+                merge ? "Merge Options" : "Sync Options", true);
         syncDialog.setSize(450, 300);
         syncDialog.setLocationRelativeTo(mainPanel);
         syncDialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
@@ -304,36 +457,49 @@ public class MarathonPanel {
         modalPanel.setBackground(Color.WHITE);
         modalPanel.setBorder(BorderFactory.createEmptyBorder(30, 30, 30, 30));
 
-        // Title
-        JLabel titleLabel = new JLabel("Choose Sync Method", JLabel.CENTER);
+        JLabel titleLabel = new JLabel(
+                merge ? "Merge Marathon Data" : "Choose Sync Method",
+                JLabel.CENTER
+        );
         titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
         titleLabel.setForeground(new Color(30, 58, 138));
 
-        // Buttons Panel
         JPanel buttonsPanel = new JPanel(new GridLayout(2, 1, 0, 15));
         buttonsPanel.setBackground(Color.WHITE);
 
-        // Database Sync Button
-        JButton dbSyncButton = createModalButton("Sync from Database",
-                "Load existing marathon data from the database", new Color(59, 130, 246));
+        JButton dbSyncButton = createModalButton(
+                merge ? "Merge from Database" : "Sync from Database",
+                merge ? "Combine overlapping lap data for selected IPs"
+                        : "Load existing marathon data from the database",
+                new Color(59, 130, 246)
+        );
 
         dbSyncButton.addActionListener(e -> {
-            syncFromDatabase();
+            if (merge) {
+                syncHandler.mergeSyncFromDatabase(lapIpMap);
+            } else {
+                syncHandler.normalSyncFromDatabase(lapIpMap);
+            }
+            refreshIpTagsPanel();
             syncDialog.dispose();
         });
 
-        // File Upload Button
-        JButton fileUploadButton = createModalButton("Upload CSV/Excel File",
-                "Import marathon data from CSV or Excel file", new Color(16, 185, 129));
+        JButton fileUploadButton = createModalButton(
+                merge ? "Merge via CSV Upload" : "Upload CSV File",
+                merge ? "Merge overlapping data from uploaded file"
+                        : "Import marathon data from CSV file",
+                new Color(16, 185, 129)
+        );
+
         fileUploadButton.addActionListener(e -> {
-            uploadFile();
+            uploadCsv(lapIpMap,merge);
+            refreshIpTagsPanel();
             syncDialog.dispose();
         });
 
         buttonsPanel.add(dbSyncButton);
         buttonsPanel.add(fileUploadButton);
 
-        // Cancel Button
         JPanel cancelPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
         cancelPanel.setBackground(Color.WHITE);
         JButton cancelButton = new JButton("Cancel");
@@ -352,6 +518,7 @@ public class MarathonPanel {
         syncDialog.add(modalPanel);
         syncDialog.setVisible(true);
     }
+
     private JButton createModalButton(String text, String description, Color bgColor) {
         JPanel buttonContent = new JPanel();
         buttonContent.setLayout(new BoxLayout(buttonContent, BoxLayout.Y_AXIS));
@@ -398,38 +565,96 @@ public class MarathonPanel {
         return button;
     }
 
-    private void syncFromDatabase() {
-       syncHandler.syncFromDatabase();
-    }
-
-    private void uploadFile() {
+    private void uploadCsv(Map<Integer,List<String>> tagIpMap,boolean merge) {
         JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setDialogTitle("Select CSV or Excel File");
+        fileChooser.setDialogTitle("Select CSV File");
         FileNameExtensionFilter filter = new FileNameExtensionFilter(
-                "CSV & Excel Files", "csv", "xlsx", "xls");
+                "CSV File", "csv");
         fileChooser.setFileFilter(filter);
 
         int result = fileChooser.showOpenDialog(mainPanel);
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFile = fileChooser.getSelectedFile();
-            syncHandler.uploadCsv(selectedFile);
+            if(merge){
+                syncHandler.mergeUploadCsv(selectedFile,tagIpMap,true);
+            }else{
+                syncHandler.uploadCsv(selectedFile,tagIpMap,false);
+            }
         }
     }
 
-    private void updateSyncButton() {
-        boolean enableSync = !marathonNameField.getText().trim().isEmpty();
-        syncButton.setEnabled(enableSync);
+    private JPanel createInstructionsPanel() {
+        JPanel instructionsPanel = new JPanel(new BorderLayout());
+        instructionsPanel.setBackground(new Color(248, 250, 252));
+        instructionsPanel.setBorder(BorderFactory.createEmptyBorder(15, 0, 5, 0));
 
-        if (enableSync) {
+        JPanel cardPanel = new JPanel(new BorderLayout());
+        cardPanel.setBackground(new Color(239, 246, 255));
+        cardPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(191, 219, 254), 1),
+                BorderFactory.createEmptyBorder(15, 20, 15, 20)
+        ));
+
+        JLabel instructionTitle = new JLabel("💡 Quick Instructions");
+        instructionTitle.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        instructionTitle.setForeground(new Color(30, 64, 175));
+
+        JTextArea instructionsText = new JTextArea(
+                "• Enter marathon name\n" +
+                        "• Review and select IP tags to sync\n" +
+                        "• Click 'Sync Data' to upload data from database or import CSV files"
+        );
+        instructionsText.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        instructionsText.setForeground(new Color(30, 58, 138));
+        instructionsText.setBackground(new Color(239, 246, 255));
+        instructionsText.setEditable(false);
+        instructionsText.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
+
+        cardPanel.add(instructionTitle, BorderLayout.NORTH);
+        cardPanel.add(instructionsText, BorderLayout.CENTER);
+
+        instructionsPanel.add(cardPanel, BorderLayout.CENTER);
+        return instructionsPanel;
+    }
+
+    private void updateSyncButton() {
+        boolean marathonFilled = marathonNameField.getText() != null && !marathonNameField.getText().trim().isEmpty();
+
+        boolean allLapsFilled = true;
+        for (Component comp : ipTagsPanel.getComponents()) {
+            if (comp instanceof JPanel row) {
+                for (Component inner : row.getComponents()) {
+                    if (inner instanceof JSpinner spinner) {
+                        JFormattedTextField textField = ((JSpinner.DefaultEditor) spinner.getEditor()).getTextField();
+                        String text = textField.getText().trim();
+                        if (text.isEmpty()) {
+                            allLapsFilled = false;
+                            break;
+                        }
+                        try {
+                            int val = Integer.parseInt(text);
+                            if (val < 1) allLapsFilled = false;
+                        } catch (NumberFormatException e) {
+                            allLapsFilled = false;
+                        }
+                    }
+                }
+            }
+        }
+        boolean enableButton = marathonFilled && allLapsFilled;
+        syncButton.setEnabled(enableButton);
+
+        if (enableButton) {
             syncButton.setBackground(new Color(34, 197, 94));
             syncStatusLabel.setText("Ready to sync marathon data");
             syncStatusLabel.setForeground(new Color(61, 189, 64));
         } else {
             syncButton.setBackground(new Color(215, 221, 228));
-            syncStatusLabel.setText("Please enter marathon name to enable sync");
+            syncStatusLabel.setText("Please enter marathon name and assign laps to enable sync");
             syncStatusLabel.setForeground(new Color(218, 59, 59));
         }
     }
+
     public JPanel getMainPanel() {
         return mainPanel;
     }
