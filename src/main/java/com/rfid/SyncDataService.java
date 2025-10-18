@@ -2,8 +2,10 @@ package com.rfid;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.impinj.octane.Tag;
 import okhttp3.*;
 
@@ -331,6 +333,9 @@ public class SyncDataService implements SyncHandler {
                             )
                     );
                     ObjectMapper mapper = new ObjectMapper();
+                    mapper.registerModule(new JavaTimeModule());
+                    mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
                     String requestsJson = mapper.writeValueAsString(requests);
 
                     // ✅ Build multipart form data properly
@@ -427,7 +432,7 @@ public class SyncDataService implements SyncHandler {
                 File fileToSave = fileChooser.getSelectedFile();
 
                 try (PrintWriter writer = new PrintWriter(new FileWriter(fileToSave))) {
-                    writer.println("tagId,antenna,firstSeen,lastSeen,readerIp");
+                    writer.println("tagId,antenna,firstSeen,lastSeen,reader");
                     // Data rows
                     for (TagDetail tag : tags) {
                         writer.printf("%s,%d,%s,%s,%s%n",

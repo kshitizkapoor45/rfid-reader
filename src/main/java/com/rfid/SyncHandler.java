@@ -11,7 +11,4 @@ public interface SyncHandler {
     List<TagDetail> fetchUnsyncedIpTags();
     void mergeSyncFromDatabase(Map<Integer, List<String>> lapIpMap);
     void mergeUploadCsv(File selectedFile, Map<Integer, List<String>> tagIpMap,boolean merge);
-
-//    void mergeSyncFromDatabase(Map<Integer, List<String>> lapIpMap);
-//    void syncSelectedTags(SyncTagDto tagDto, boolean flush);
 }
